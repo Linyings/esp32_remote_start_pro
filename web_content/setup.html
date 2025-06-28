@@ -217,6 +217,38 @@
       color: #6c757d;
     }
 
+    .wifi-item.selected {
+      background-color: #e3f2fd;
+      border-left: 4px solid #2196f3;
+    }
+
+    .signal-bars {
+      display: flex;
+      align-items: flex-end;
+      gap: 2px;
+      height: 16px;
+      margin-left: 10px;
+    }
+
+    .signal-bar {
+      width: 3px;
+      background-color: #ddd;
+      border-radius: 1px;
+    }
+
+    .signal-bar:nth-child(1) { height: 25%; }
+    .signal-bar:nth-child(2) { height: 50%; }
+    .signal-bar:nth-child(3) { height: 75%; }
+    .signal-bar:nth-child(4) { height: 100%; }
+
+    .signal-bar.active {
+      background-color: #28a745;
+    }
+
+    .signal-bar.weak { background-color: #dc3545; }
+    .signal-bar.fair { background-color: #ffc107; }
+    .signal-bar.good { background-color: #28a745; }
+
     .home-btn { 
       background-color: #6c757d; 
       color: white; 
@@ -298,6 +330,55 @@
         padding: 10px 15px;
       }
     }
+
+    /* 认证设置样式 */
+    .auth-settings-container {
+      margin-top: 30px;
+      background: var(--card-bg);
+      border-radius: var(--border-radius);
+      box-shadow: var(--box-shadow);
+      padding: 20px;
+    }
+
+    .card-header {
+      margin-bottom: 20px;
+    }
+
+    .card-header h2 {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--primary-color);
+      margin-bottom: 5px;
+    }
+
+    .auth-form {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+
+    .status-message {
+      padding: 12px;
+      border-radius: 6px;
+      text-align: center;
+      margin-top: 15px;
+      display: none;
+    }
+
+    .status-message.success {
+      background-color: rgba(6, 214, 160, 0.1);
+      color: #06d6a0;
+    }
+
+    .status-message.error {
+      background-color: rgba(247, 37, 133, 0.1);
+      color: var(--danger-color);
+    }
+
+    .status-message.loading {
+      background-color: rgba(67, 97, 238, 0.1);
+      color: var(--primary-color);
+    }
   </style>
 </head>
 <body>
@@ -321,28 +402,49 @@
       </form>
     </div>
     
-    <div id="status"></div>
+    <div id="status" class="error"></div>
     
     <div class="wifi-list-container">
       <div class="wifi-list-header">
-        <h3 class="wifi-list-title">可用WiFi网络</h3>
+        <h2 class="wifi-list-title">可用网络</h2>
         <button id="refresh-btn" class="refresh-btn">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M23 4v6h-6"></path>
-            <path d="M1 20v-6h6"></path>
-            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"></path>
-            <path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"></path>
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.44-4.5M22 12.5a10 10 0 0 1-18.44 4.5"/>
           </svg>
           刷新
         </button>
       </div>
-      <div id="networks-list" class="wifi-list">
-        <div class="loading-indicator">
-          <div class="spinner"></div>
-        </div>
+
+      <div id="wifi-list" class="wifi-list">
+        <div class="wifi-loading">正在扫描网络...</div>
       </div>
     </div>
-    
+
+    <!-- 添加用户认证设置卡片 -->
+    <div class="auth-settings-container">
+      <div class="card-header">
+        <h2>登录凭据设置</h2>
+        <p class="subtitle">设置访问控制页面的用户名和密码</p>
+        <p class="subtitle" style="font-size: 14px; color: #6c757d;">当前用户名: <span id="current-username-display">加载中...</span></p>
+      </div>
+      <form id="auth-form" class="auth-form">
+        <div class="form-group">
+          <label for="new-username">用户名</label>
+          <input type="text" id="new-username" name="new-username" placeholder="输入新的用户名" required>
+        </div>
+        <div class="form-group">
+          <label for="new-password">密码</label>
+          <input type="password" id="new-password" name="new-password" placeholder="输入新的密码" required>
+        </div>
+        <div class="form-group">
+          <label for="confirm-password">确认密码</label>
+          <input type="password" id="confirm-password" name="confirm-password" placeholder="再次输入密码" required>
+        </div>
+        <button type="submit" class="submit-btn">保存设置</button>
+        <div id="auth-status" class="status-message"></div>
+      </form>
+    </div>
+
     <!-- 返回主页按钮，只在APSTA模式下显示 -->
     <div id="nav-buttons">
       <a href="/" class="home-btn" id="home-btn" style="display: none;">返回主控制页面</a>
@@ -358,6 +460,12 @@
     const networksList = document.getElementById('networks-list');
     const homeBtn = document.getElementById('home-btn');
     const refreshBtn = document.getElementById('refresh-btn');
+
+    // 调试信息
+    console.log('DOM元素检查:');
+    console.log('wifiForm:', wifiForm);
+    console.log('networksList:', networksList);
+    console.log('refreshBtn:', refreshBtn);
     
     // 检查当前URL是否包含主机名（非192.168.4.1）
     function checkIfShouldShowHomeButton() {
@@ -457,127 +565,134 @@
       networksList.innerHTML = `
         <div class="loading-indicator">
           <div class="spinner"></div>
+          <div style="margin-left: 10px; color: #007bff;">正在扫描WiFi网络...</div>
         </div>
       `;
-      
-      // 最多尝试3次扫描
-      let maxRetries = 3;
-      let retryCount = 0;
-      let success = false;
-      
-      while (retryCount < maxRetries && !success) {
-        try {
-          if (retryCount > 0) {
-            networksList.innerHTML = `
-              <div class="loading-indicator">
-                <div class="spinner"></div>
-                <div style="margin-left: 10px">扫描重试中 (${retryCount}/${maxRetries})...</div>
-              </div>
-            `;
-            await new Promise(resolve => setTimeout(resolve, 1000)); // 等待1秒再重试
-          }
-          
-          const response = await fetch('/api/wifi/scan');
-          
-          if (!response.ok) {
-            throw new Error(`HTTP错误! 状态: ${response.status}`);
-          }
-          
-          const data = await response.json();
-          
-          if (data.success && data.networks && data.networks.length > 0) {
-            success = true;
-            networksList.innerHTML = '';
+
+      try {
+        console.log('开始WiFi扫描请求...');
+        const response = await fetch('/api/wifi/scan');
+
+        console.log('WiFi扫描响应状态:', response.status);
+
+        if (!response.ok) {
+          throw new Error(`HTTP错误! 状态: ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log('WiFi扫描数据:', data);
+
+        if (data.success && data.networks && data.networks.length > 0) {
+          networksList.innerHTML = '';
+
+          // 添加扫描结果统计
+          const header = document.createElement('div');
+          header.style.cssText = 'padding: 15px; background: #f8f9fa; border-bottom: 1px solid #dee2e6; font-size: 14px; color: #6c757d;';
+          header.innerHTML = `找到 ${data.count || data.networks.length} 个WiFi网络`;
+          networksList.appendChild(header);
+
+          // 按信号强度排序
+          data.networks.sort((a, b) => b.rssi - a.rssi);
             
-            // 按信号强度排序
-            data.networks.sort((a, b) => b.rssi - a.rssi);
-            
-            data.networks.forEach(network => {
-              // 确定信号强度图标
-              let signalStrength = '';
-              let signalIcon = '';
-              
-              if (network.rssi > -50) {
-                signalStrength = '信号极好';
-                signalIcon = `
-                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M5 12.55a11 11 0 0 1 14.08 0"></path>
-                    <path d="M1.42 9a16 16 0 0 1 21.16 0"></path>
-                    <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
-                    <line x1="12" y1="20" x2="12" y2="20"></line>
-                  </svg>
-                `;
-              } else if (network.rssi > -60) {
-                signalStrength = '信号良好';
-                signalIcon = `
-                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M5 12.55a11 11 0 0 1 14.08 0"></path>
-                    <path d="M1.42 9a16 16 0 0 1 21.16 0"></path>
-                    <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
-                    <line x1="12" y1="20" x2="12" y2="20"></line>
-                  </svg>
-                `;
-              } else if (network.rssi > -70) {
-                signalStrength = '信号一般';
-                signalIcon = `
-                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M5 12.55a11 11 0 0 1 14.08 0"></path>
-                    <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
-                    <line x1="12" y1="20" x2="12" y2="20"></line>
-                  </svg>
-                `;
-              } else {
-                signalStrength = '信号较弱';
-                signalIcon = `
-                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
-                    <line x1="12" y1="20" x2="12" y2="20"></line>
-                  </svg>
-                `;
-              }
-              
+            data.networks.forEach((network, index) => {
               const item = document.createElement('div');
               item.className = 'wifi-item';
+
+              // 使用新的API数据结构
+              const signalStrength = network.signal_strength || '未知';
+              const signalPercent = network.signal_percent || 0;
+              const authMode = network.auth_mode || '未知';
+              const isOpen = network.is_open || false;
+
+              // 安全类型图标
+              const securityIcon = isOpen ?
+                '<span style="color: #28a745;">🔓</span>' :
+                '<span style="color: #ffc107;">🔒</span>';
+
+              // 生成信号强度条
+              const bars = Math.ceil(signalPercent / 25); // 1-4条
+              let signalBars = '<div class="signal-bars">';
+              for (let i = 1; i <= 4; i++) {
+                signalBars += `<div class="signal-bar ${i <= bars ? 'active' : ''}"></div>`;
+              }
+              signalBars += '</div>';
+
               item.innerHTML = `
-                <div class="wifi-icon">${signalIcon}</div>
-                <div class="wifi-details">
-                  <div class="wifi-name">${network.ssid}</div>
-                  <div class="wifi-signal">${signalStrength} (${network.rssi} dBm)</div>
+                <div class="wifi-info">
+                  <div class="wifi-name">
+                    ${securityIcon} ${network.ssid}
+                    <span style="font-size: 12px; color: #6c757d; margin-left: 8px;">
+                      ${authMode}
+                    </span>
+                  </div>
+                  <div class="wifi-details">
+                    信道: ${network.channel} |
+                    信号: ${signalStrength} (${network.rssi}dBm)
+                  </div>
+                </div>
+                <div class="wifi-signal">
+                  ${signalBars}
+                  <div style="font-size: 11px; color: #6c757d; margin-top: 2px;">
+                    ${signalPercent}%
+                  </div>
                 </div>
               `;
-              
+
+              // 添加点击事件
               item.addEventListener('click', () => {
                 ssidInput.value = network.ssid;
-                passwordInput.focus();
+
+                // 高亮选中的网络
+                document.querySelectorAll('.wifi-item').forEach(el => el.classList.remove('selected'));
+                item.classList.add('selected');
+
+                // 如果是开放网络，直接聚焦到连接按钮
+                if (isOpen) {
+                  passwordInput.value = '';
+                  passwordInput.style.display = 'none';
+                  passwordInput.previousElementSibling.style.display = 'none';
+                } else {
+                  passwordInput.style.display = 'block';
+                  passwordInput.previousElementSibling.style.display = 'block';
+                  passwordInput.focus();
+                }
+
                 // 滚动到表单
                 wifiForm.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
               });
-              
+
               networksList.appendChild(item);
             });
-          } else {
-            networksList.innerHTML = `
-              <div style="padding: 20px; text-align: center; color: #6c757d;">
-                未找到可用的WiFi网络，点击此处重新扫描
+        } else {
+          // 没有找到网络
+          networksList.innerHTML = `
+            <div style="padding: 30px; text-align: center;">
+              <div style="font-size: 48px; margin-bottom: 15px;">📶</div>
+              <div style="color: #6c757d; margin-bottom: 15px;">
+                ${data.message || '未找到可用的WiFi网络'}
               </div>
-            `;
-            networksList.style.cursor = 'pointer';
-            networksList.onclick = retryLoadNetworks;
-          }
-        } catch (error) {
-          console.error('Error:', error);
-          retryCount++;
-          
-          if (retryCount >= maxRetries) {
-            networksList.innerHTML = `
-              <div style="padding: 20px; text-align: center; color: #6c757d;">
-                加载WiFi网络失败，点击此处重试
-              </div>
-            `;
-            networksList.style.cursor = 'pointer';
-            networksList.onclick = retryLoadNetworks;
-          }
+              <button onclick="retryLoadNetworks()" style="
+                background: #007bff; color: white; border: none;
+                padding: 8px 16px; border-radius: 5px; cursor: pointer;
+              ">重新扫描</button>
+            </div>
+          `;
         }
+
+      } catch (error) {
+        console.error('WiFi扫描错误:', error);
+        networksList.innerHTML = `
+          <div style="padding: 30px; text-align: center;">
+            <div style="font-size: 48px; margin-bottom: 15px;">⚠️</div>
+            <div style="color: #dc3545; margin-bottom: 15px;">
+              扫描失败: ${error.message}
+            </div>
+            <button onclick="retryLoadNetworks()" style="
+              background: #dc3545; color: white; border: none;
+              padding: 8px 16px; border-radius: 5px; cursor: pointer;
+            ">重试</button>
+          </div>
+        `;
       }
     }
     
@@ -599,6 +714,112 @@
     
     // 刷新按钮事件
     refreshBtn.addEventListener('click', retryLoadNetworks);
+
+    // 添加认证凭据设置的函数
+    const authForm = document.getElementById('auth-form');
+    const authStatus = document.getElementById('auth-status');
+    const currentUsernameDisplay = document.getElementById('current-username-display');
+
+    // 加载当前用户名
+    async function loadCurrentUsername() {
+      try {
+        const response = await fetch('/api/auth_info');
+        const data = await response.json();
+        if (data.success) {
+          currentUsernameDisplay.textContent = data.username;
+        } else {
+          currentUsernameDisplay.textContent = 'admin (默认)';
+        }
+      } catch (error) {
+        console.error('加载用户名失败:', error);
+        currentUsernameDisplay.textContent = 'admin (默认)';
+      }
+    }
+
+    authForm.addEventListener('submit', function(e) {
+      e.preventDefault();
+
+      const newUsername = document.getElementById('new-username').value.trim();
+      const newPassword = document.getElementById('new-password').value.trim();
+      const confirmPassword = document.getElementById('confirm-password').value.trim();
+
+      // 验证表单
+      if (!newUsername || !newPassword || !confirmPassword) {
+        showAuthMessage('所有字段都为必填项', 'error');
+        return;
+      }
+
+      if (newPassword !== confirmPassword) {
+        showAuthMessage('两次输入的密码不匹配', 'error');
+        return;
+      }
+
+      if (newUsername.length > 31 || newPassword.length > 63) {
+        showAuthMessage('用户名不能超过31个字符，密码不能超过63个字符', 'error');
+        return;
+      }
+
+      // 显示加载状态
+      showAuthMessage('正在保存设置...', 'loading');
+
+      // 发送设置请求
+      fetch('/api/set_auth', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          username: newUsername,
+          password: newPassword
+        })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          showAuthMessage('登录凭据设置成功！', 'success');
+          // 清除表单
+          document.getElementById('new-username').value = '';
+          document.getElementById('new-password').value = '';
+          document.getElementById('confirm-password').value = '';
+
+          // 更新显示的当前用户名
+          currentUsernameDisplay.textContent = newUsername;
+
+          // 如果处于STA模式，清除本地认证状态，要求重新登录
+          if (!isAPMode) {
+            localStorage.removeItem('authenticated');
+          }
+        } else {
+          showAuthMessage(data.message || '设置失败', 'error');
+        }
+      })
+      .catch(error => {
+        console.error('Error:', error);
+        showAuthMessage('设置时发生错误', 'error');
+      });
+    });
+    
+    function showAuthMessage(message, type) {
+      authStatus.textContent = message;
+      authStatus.className = 'status-message';
+      
+      if (type) {
+        authStatus.classList.add(type);
+      }
+      
+      authStatus.style.display = 'block';
+      
+      if (type === 'success' || type === 'error') {
+        setTimeout(() => {
+          authStatus.style.display = 'none';
+        }, 5000);
+      }
+    }
+
+    // 页面加载时初始化
+    document.addEventListener('DOMContentLoaded', function() {
+      loadCurrentUsername();
+    });
   </script>
 </body>
-</html> 
+</html>

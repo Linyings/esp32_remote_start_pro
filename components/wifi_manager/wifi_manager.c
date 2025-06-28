@@ -673,175 +673,302 @@ static void wifi_manager_print_status(void)
     }
 }
 
-wifi_ap_record_t *wifi_manager_scan_networks(uint16_t *ap_count)
-{
+// 比较函数，用于按信号强度排序（从强到弱）
+static int compare_rssi(const void *a, const void *b) {
+    wifi_ap_record_t *ap_a = (wifi_ap_record_t *)a;
+    wifi_ap_record_t *ap_b = (wifi_ap_record_t *)b;
+    return ap_b->rssi - ap_a->rssi; // 降序排列
+}
+
+// 去重函数，移除相同SSID的重复项，保留信号最强的
+static uint16_t remove_duplicates(wifi_ap_record_t *ap_records, uint16_t count) {
+    if (count <= 1) return count;
+
+    uint16_t unique_count = 0;
+    for (uint16_t i = 0; i < count; i++) {
+        bool is_duplicate = false;
+
+        // 检查是否已经存在相同的SSID
+        for (uint16_t j = 0; j < unique_count; j++) {
+            if (strcmp((char*)ap_records[i].ssid, (char*)ap_records[j].ssid) == 0) {
+                is_duplicate = true;
+                break;
+            }
+        }
+
+        // 如果不是重复项，添加到结果中
+        if (!is_duplicate) {
+            if (unique_count != i) {
+                memcpy(&ap_records[unique_count], &ap_records[i], sizeof(wifi_ap_record_t));
+            }
+            unique_count++;
+        }
+    }
+
+    return unique_count;
+}
+
+// 简化的WiFi扫描函数，不切换模式
+static wifi_ap_record_t *simple_wifi_scan(uint16_t *ap_count) {
     if (ap_count == NULL) {
         return NULL;
     }
-    
-    // 打印WiFi状态
-    wifi_manager_print_status();
-    
+
+    *ap_count = 0;
+    ESP_LOGI(TAG, "使用简化扫描模式");
+
+    // 停止任何正在进行的扫描
+    esp_wifi_scan_stop();
+    vTaskDelay(pdMS_TO_TICKS(100));
+
+    // 配置简单的扫描参数
+    wifi_scan_config_t scan_config = {
+        .ssid = NULL,
+        .bssid = NULL,
+        .channel = 0,
+        .show_hidden = false,
+        .scan_type = WIFI_SCAN_TYPE_ACTIVE,
+        .scan_time.active.min = 120,
+        .scan_time.active.max = 200,
+    };
+
+    // 开始扫描
+    esp_err_t scan_result = esp_wifi_scan_start(&scan_config, true);
+    if (scan_result != ESP_OK) {
+        ESP_LOGE(TAG, "简化扫描失败: %s", esp_err_to_name(scan_result));
+        return NULL;
+    }
+
+    // 获取扫描结果
+    esp_err_t get_num_result = esp_wifi_scan_get_ap_num(ap_count);
+    if (get_num_result != ESP_OK || *ap_count == 0) {
+        ESP_LOGW(TAG, "简化扫描未找到网络");
+        return NULL;
+    }
+
+    wifi_ap_record_t *ap_records = (wifi_ap_record_t *)malloc(*ap_count * sizeof(wifi_ap_record_t));
+    if (ap_records == NULL) {
+        ESP_LOGE(TAG, "简化扫描内存分配失败");
+        *ap_count = 0;
+        return NULL;
+    }
+
+    esp_err_t get_ap_result = esp_wifi_scan_get_ap_records(ap_count, ap_records);
+    if (get_ap_result != ESP_OK) {
+        ESP_LOGE(TAG, "简化扫描获取记录失败");
+        free(ap_records);
+        *ap_count = 0;
+        return NULL;
+    }
+
+    ESP_LOGI(TAG, "简化扫描成功，找到 %d 个网络", *ap_count);
+    return ap_records;
+}
+
+wifi_ap_record_t *wifi_manager_scan_networks(uint16_t *ap_count)
+{
+    if (ap_count == NULL) {
+        ESP_LOGE(TAG, "ap_count参数为NULL");
+        return NULL;
+    }
+
+    *ap_count = 0;
+
     // 确保WiFi已初始化
     wifi_mode_t current_mode;
     if (esp_wifi_get_mode(&current_mode) != ESP_OK) {
         ESP_LOGE(TAG, "WiFi未初始化");
         return NULL;
     }
-    
-    // 临时保存当前模式
-    wifi_mode_t original_mode = current_mode;
-    
-    // 在AP模式下进行扫描设置为APSTA模式
+
+    ESP_LOGI(TAG, "开始WiFi扫描，当前模式: %d", current_mode);
+
+    // 如果当前是AP模式，需要切换到APSTA模式才能扫描
+    bool mode_changed = false;
     if (current_mode == WIFI_MODE_AP) {
-        ESP_LOGI(TAG, "当前为AP模式，临时切换到APSTA模式以进行扫描");
-        if (esp_wifi_set_mode(WIFI_MODE_APSTA) != ESP_OK) {
-            ESP_LOGE(TAG, "切换到APSTA模式失败");
-            // 尝试使用原始模式继续
+        ESP_LOGI(TAG, "切换到APSTA模式以支持扫描");
+
+        // 先停止WiFi
+        esp_wifi_stop();
+        vTaskDelay(pdMS_TO_TICKS(100));
+
+        // 切换模式
+        esp_err_t mode_result = esp_wifi_set_mode(WIFI_MODE_APSTA);
+        if (mode_result != ESP_OK) {
+            ESP_LOGE(TAG, "切换到APSTA模式失败: %s", esp_err_to_name(mode_result));
+            // 尝试重新启动AP模式
+            esp_wifi_set_mode(WIFI_MODE_AP);
+            esp_wifi_start();
+            return NULL;
         }
-        // 给一些时间WiFi驱动适应新模式
-        vTaskDelay(pdMS_TO_TICKS(300));
+
+        // 重新启动WiFi
+        esp_err_t start_result = esp_wifi_start();
+        if (start_result != ESP_OK) {
+            ESP_LOGE(TAG, "重新启动WiFi失败: %s", esp_err_to_name(start_result));
+            return NULL;
+        }
+
+        mode_changed = true;
+        vTaskDelay(pdMS_TO_TICKS(2000)); // 增加等待时间，确保模式切换和启动完成
     }
-    
-    // 先停止任何可能正在进行的扫描
+
+    // 停止任何正在进行的扫描
     esp_wifi_scan_stop();
+    vTaskDelay(pdMS_TO_TICKS(300));
     
-    // 添加短暂延迟，确保扫描完全停止
-    vTaskDelay(pdMS_TO_TICKS(100));
-    
-    // 临时禁用电源管理，可能会影响扫描
-    wifi_ps_type_t ps_type;
-    esp_wifi_get_ps(&ps_type);
-    if (ps_type != WIFI_PS_NONE) {
-        ESP_LOGI(TAG, "临时禁用WiFi电源管理以提高扫描可靠性");
-        esp_wifi_set_ps(WIFI_PS_NONE);
-    }
-    
-    // 开始扫描
+    // 配置扫描参数 - 使用更保守的设置
     wifi_scan_config_t scan_config = {
         .ssid = NULL,
         .bssid = NULL,
-        .channel = 0,
-        .show_hidden = true,
+        .channel = 0,  // 扫描所有信道
+        .show_hidden = false,  // 不显示隐藏网络
         .scan_type = WIFI_SCAN_TYPE_ACTIVE,
-        .scan_time.active.min = 120,
-        .scan_time.active.max = 150,
+        .scan_time.active.min = 100,   // 使用更保守的时间
+        .scan_time.active.max = 300,   // 使用更保守的时间
     };
-    
-    // 尝试开始扫描，最多重试3次
-    esp_err_t scan_result = ESP_FAIL;
-    for (int retry = 0; retry < 3 && scan_result != ESP_OK; retry++) {
-        if (retry > 0) {
-            ESP_LOGI(TAG, "WiFi扫描重试 %d/3", retry + 1);
-            vTaskDelay(pdMS_TO_TICKS(500)); // 重试前等待500ms
-        }
-        scan_result = esp_wifi_scan_start(&scan_config, true);
-        ESP_LOGI(TAG, "WiFi扫描尝试 %d 结果: %s", retry + 1, esp_err_to_name(scan_result));
-    }
-    
-    // 恢复原来的电源管理模式
-    if (ps_type != WIFI_PS_NONE) {
-        ESP_LOGI(TAG, "恢复WiFi电源管理模式");
-        esp_wifi_set_ps(ps_type);
-    }
-    
-    // 如果是从AP模式临时切换的，恢复为原始模式
-    if (original_mode == WIFI_MODE_AP && current_mode != original_mode) {
-        ESP_LOGI(TAG, "恢复为原始的AP模式");
-        if (esp_wifi_set_mode(original_mode) != ESP_OK) {
-            ESP_LOGE(TAG, "恢复为AP模式失败");
-            // 尝试重新初始化AP模式
-            wifi_manager_start_ap();
-        }
-    }
-    
+
+    // 开始扫描（阻塞模式）
+    ESP_LOGI(TAG, "开始WiFi扫描...");
+    esp_err_t scan_result = esp_wifi_scan_start(&scan_config, true);
+
     if (scan_result != ESP_OK) {
-        ESP_LOGE(TAG, "WiFi扫描启动失败: %s", esp_err_to_name(scan_result));
-        
-        // 尝试直接获取结果，可能有些情况下扫描已完成但返回状态错误
-        uint16_t direct_ap_count = 0;
-        esp_err_t get_num_result = esp_wifi_scan_get_ap_num(&direct_ap_count);
-        
-        if (get_num_result == ESP_OK && direct_ap_count > 0) {
-            ESP_LOGI(TAG, "尽管扫描返回错误，但发现了 %d 个AP，尝试返回这些结果", direct_ap_count);
-            *ap_count = direct_ap_count;
-            wifi_ap_record_t *ap_records = malloc(direct_ap_count * sizeof(wifi_ap_record_t));
-            if (ap_records != NULL) {
-                if (esp_wifi_scan_get_ap_records(ap_count, ap_records) == ESP_OK) {
-                    return ap_records;
-                }
-                free(ap_records);
-            }
+        ESP_LOGE(TAG, "WiFi扫描失败: %s", esp_err_to_name(scan_result));
+
+        // 恢复原始模式
+        if (mode_changed) {
+            ESP_LOGI(TAG, "恢复为AP模式");
+            esp_wifi_stop();
+            esp_wifi_set_mode(WIFI_MODE_AP);
+            esp_wifi_start();
         }
-        
-        // 如果扫描失败，尝试重置WiFi
-        ESP_LOGW(TAG, "尝试重置WiFi以恢复功能");
-        
-        // 停止WiFi
-        esp_wifi_stop();
-        vTaskDelay(pdMS_TO_TICKS(200));
-        
-        // 重新启动WiFi并恢复之前的模式
-        esp_wifi_start();
-        
-        // 如果之前是STA模式，尝试重新连接
-        if (original_mode == WIFI_MODE_STA || original_mode == WIFI_MODE_APSTA) {
-            esp_wifi_connect();
-        }
-        
-        // 如果扫描失败，返回一个空的AP列表而不是NULL
-        // 这样前端至少能显示一个空列表而不是错误
-        *ap_count = 0;
-        wifi_ap_record_t *empty_records = malloc(sizeof(wifi_ap_record_t));
-        if (empty_records == NULL) {
-            return NULL;
-        }
-        memset(empty_records, 0, sizeof(wifi_ap_record_t));
-        return empty_records;
+
+        // 尝试简化扫描作为备用方案
+        ESP_LOGW(TAG, "尝试简化扫描作为备用方案");
+        return simple_wifi_scan(ap_count);
     }
     
-    // 获取扫描结果
+    ESP_LOGI(TAG, "WiFi扫描完成，获取结果...");
+    
+    // 获取扫描到的AP数量
     esp_err_t get_num_result = esp_wifi_scan_get_ap_num(ap_count);
     if (get_num_result != ESP_OK) {
         ESP_LOGE(TAG, "获取AP数量失败: %s", esp_err_to_name(get_num_result));
-        *ap_count = 0;
-        wifi_ap_record_t *empty_records = malloc(sizeof(wifi_ap_record_t));
-        if (empty_records == NULL) {
-            return NULL;
+        // 恢复原始模式
+        if (mode_changed) {
+            esp_wifi_set_mode(WIFI_MODE_AP);
         }
-        memset(empty_records, 0, sizeof(wifi_ap_record_t));
-        return empty_records;
-    }
-    
-    if (*ap_count == 0) {
-        ESP_LOGW(TAG, "未找到任何WiFi网络");
-        wifi_ap_record_t *empty_records = malloc(sizeof(wifi_ap_record_t));
-        if (empty_records == NULL) {
-            return NULL;
-        }
-        memset(empty_records, 0, sizeof(wifi_ap_record_t));
-        return empty_records;
-    }
-    
-    wifi_ap_record_t *ap_records = (wifi_ap_record_t *)malloc(*ap_count * sizeof(wifi_ap_record_t));
-    if (ap_records == NULL) {
-        ESP_LOGE(TAG, "内存分配失败");
         *ap_count = 0;
         return NULL;
     }
-    
+
+    ESP_LOGI(TAG, "扫描到 %d 个WiFi网络", *ap_count);
+
+    if (*ap_count == 0) {
+        ESP_LOGW(TAG, "未找到任何WiFi网络");
+        // 恢复原始模式
+        if (mode_changed) {
+            esp_wifi_set_mode(WIFI_MODE_AP);
+        }
+        return NULL;
+    }
+
+    // 分配内存存储扫描结果
+    wifi_ap_record_t *ap_records = (wifi_ap_record_t *)malloc(*ap_count * sizeof(wifi_ap_record_t));
+    if (ap_records == NULL) {
+        ESP_LOGE(TAG, "内存分配失败");
+        // 恢复原始模式
+        if (mode_changed) {
+            esp_wifi_set_mode(WIFI_MODE_AP);
+        }
+        *ap_count = 0;
+        return NULL;
+    }
+
+    // 获取扫描结果
     esp_err_t get_ap_result = esp_wifi_scan_get_ap_records(ap_count, ap_records);
     if (get_ap_result != ESP_OK) {
         ESP_LOGE(TAG, "获取AP记录失败: %s", esp_err_to_name(get_ap_result));
         free(ap_records);
-        *ap_count = 0;
-        wifi_ap_record_t *empty_records = malloc(sizeof(wifi_ap_record_t));
-        if (empty_records == NULL) {
-            return NULL;
+        // 恢复原始模式
+        if (mode_changed) {
+            esp_wifi_set_mode(WIFI_MODE_AP);
         }
-        memset(empty_records, 0, sizeof(wifi_ap_record_t));
-        return empty_records;
+        *ap_count = 0;
+        return NULL;
     }
-    
-    return ap_records;
+
+    ESP_LOGI(TAG, "原始扫描结果: %d 个网络", *ap_count);
+
+    // 过滤掉信号太弱的网络（RSSI < -90dBm）
+    uint16_t filtered_count = 0;
+    for (uint16_t i = 0; i < *ap_count; i++) {
+        if (ap_records[i].rssi >= -90 && strlen((char*)ap_records[i].ssid) > 0) {
+            if (filtered_count != i) {
+                memcpy(&ap_records[filtered_count], &ap_records[i], sizeof(wifi_ap_record_t));
+            }
+            filtered_count++;
+        }
+    }
+    *ap_count = filtered_count;
+
+    if (*ap_count == 0) {
+        ESP_LOGW(TAG, "过滤后没有可用的WiFi网络");
+        free(ap_records);
+        if (mode_changed) {
+            esp_wifi_set_mode(WIFI_MODE_AP);
+        }
+        return NULL;
+    }
+
+    ESP_LOGI(TAG, "过滤后: %d 个网络", *ap_count);
+
+    // 按信号强度排序（从强到弱）
+    qsort(ap_records, *ap_count, sizeof(wifi_ap_record_t), compare_rssi);
+
+    // 去除重复的SSID，保留信号最强的
+    *ap_count = remove_duplicates(ap_records, *ap_count);
+
+    ESP_LOGI(TAG, "去重后: %d 个网络", *ap_count);
+
+    // 限制返回的网络数量为前10个
+    const uint16_t MAX_NETWORKS = 10;
+    if (*ap_count > MAX_NETWORKS) {
+        *ap_count = MAX_NETWORKS;
+        ESP_LOGI(TAG, "限制为前 %d 个信号最强的网络", MAX_NETWORKS);
+    }
+
+    // 重新分配内存以节省空间
+    wifi_ap_record_t *final_records = (wifi_ap_record_t *)malloc(*ap_count * sizeof(wifi_ap_record_t));
+    if (final_records == NULL) {
+        ESP_LOGE(TAG, "重新分配内存失败");
+        free(ap_records);
+        if (mode_changed) {
+            esp_wifi_set_mode(WIFI_MODE_AP);
+        }
+        *ap_count = 0;
+        return NULL;
+    }
+
+    memcpy(final_records, ap_records, *ap_count * sizeof(wifi_ap_record_t));
+    free(ap_records);
+
+    // 恢复原始模式
+    if (mode_changed) {
+        ESP_LOGI(TAG, "恢复为AP模式");
+        esp_wifi_stop();
+        vTaskDelay(pdMS_TO_TICKS(100));
+        esp_wifi_set_mode(WIFI_MODE_AP);
+        esp_wifi_start();
+        vTaskDelay(pdMS_TO_TICKS(500)); // 等待AP模式重新启动
+    }
+
+    // 打印扫描结果
+    ESP_LOGI(TAG, "WiFi扫描成功完成，返回 %d 个网络:", *ap_count);
+    for (uint16_t i = 0; i < *ap_count; i++) {
+        ESP_LOGI(TAG, "  %d. SSID: %s, RSSI: %d dBm, 信道: %d",
+                 i + 1, final_records[i].ssid, final_records[i].rssi, final_records[i].primary);
+    }
+
+    return final_records;
 } 
