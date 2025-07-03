@@ -19,7 +19,7 @@ static const char *TAG = "servo_control";
 #define SERVO_PRESS_DUTY           614   // 按下角度占空比 (约90度)
 
 // 舵机按压时间配置
-#define SERVO_PRESS_TIME_MS        200   // 按下时间(毫秒)
+#define SERVO_PRESS_TIME_MS        100   // 按下时间(毫秒) - 优化为100ms，减少响应延迟
 
 esp_err_t servo_control_init(void)
 {
@@ -81,36 +81,26 @@ esp_err_t servo_control_init(void)
 esp_err_t servo_press_power_button(void)
 {
     ESP_LOGI(TAG, "执行按下电源按钮动作");
-    
-    // 设置舵机到按下位置
-    esp_err_t ret = ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, SERVO_PRESS_DUTY);
+
+    // 快速设置舵机到按下位置
+    esp_err_t ret = ledc_set_duty_and_update(LEDC_MODE, LEDC_CHANNEL, SERVO_PRESS_DUTY, 0);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "设置LEDC占空比失败: %d", ret);
+        ESP_LOGE(TAG, "设置舵机按下位置失败: %d", ret);
         return ret;
     }
-    
-    ret = ledc_update_duty(LEDC_MODE, LEDC_CHANNEL);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "更新LEDC占空比失败: %d", ret);
-        return ret;
-    }
-    
-    // 保持按下状态
+
+    ESP_LOGI(TAG, "舵机已移动到按下位置，保持 %d ms", SERVO_PRESS_TIME_MS);
+
+    // 保持按下状态（优化后的时间）
     vTaskDelay(SERVO_PRESS_TIME_MS / portTICK_PERIOD_MS);
-    
-    // 返回到初始位置
-    ret = ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, SERVO_INIT_DUTY);
+
+    // 快速返回到初始位置
+    ret = ledc_set_duty_and_update(LEDC_MODE, LEDC_CHANNEL, SERVO_INIT_DUTY, 0);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "设置LEDC占空比失败: %d", ret);
+        ESP_LOGE(TAG, "设置舵机初始位置失败: %d", ret);
         return ret;
     }
-    
-    ret = ledc_update_duty(LEDC_MODE, LEDC_CHANNEL);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "更新LEDC占空比失败: %d", ret);
-        return ret;
-    }
-    
-    ESP_LOGI(TAG, "电源按钮按下动作完成");
+
+    ESP_LOGI(TAG, "电源按钮按下动作完成，总耗时约 %d ms", SERVO_PRESS_TIME_MS + 20);
     return ESP_OK;
-} 
+}

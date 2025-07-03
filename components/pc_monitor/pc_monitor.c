@@ -18,8 +18,8 @@ static const char *TAG = "pc_monitor";
 #define PCF8574_ADDR                0x21    // PCF8574 I2C地址
 #define PCF8574_STATUS_BIT          0       // PCF8574中PC状态所在的位
 
-// 检测间隔(毫秒)
-#define PC_STATUS_CHECK_INTERVAL_MS 1000
+// 检测间隔(毫秒) - 修改为10秒，减少频繁检测
+#define PC_STATUS_CHECK_INTERVAL_MS 10000
 
 // 当前PC状态
 static pc_state_t s_current_pc_state = PC_STATE_OFF;
@@ -173,17 +173,22 @@ void pc_monitor_task(void *pvParameter)
         
         // 检测状态变化
         if (new_state != s_current_pc_state) {
-            ESP_LOGI(TAG, "检测到PC状态变化: %s -> %s", 
+            ESP_LOGI(TAG, "检测到PC状态变化: %s -> %s",
                 s_current_pc_state == PC_STATE_ON ? "开机" : "关机",
                 new_state == PC_STATE_ON ? "开机" : "关机");
-            
+
             // 更新状态
             s_current_pc_state = new_state;
-            
-            // 调用回调函数
+
+            // 只在状态变化时调用回调函数（发送WebSocket消息）
             if (s_state_change_callback != NULL) {
+                ESP_LOGI(TAG, "主动发送状态变化通知");
                 s_state_change_callback(new_state);
             }
+        } else {
+            // 状态无变化，静默检测，不发送任何通知
+            ESP_LOGD(TAG, "PC状态无变化，保持: %s",
+                s_current_pc_state == PC_STATE_ON ? "开机" : "关机");
         }
         
         // 延时检测

@@ -3,19 +3,30 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>远程开机助手 - 设置</title>
+  <title>远程开机助手 - 网络配置</title>
   <style>
     :root {
-      --primary-color: #4361ee;
-      --secondary-color: #3f37c9;
-      --success-color: #4cc9f0;
-      --danger-color: #f72585;
-      --light-color: #f8f9fa;
-      --dark-color: #212529;
-      --card-bg: #ffffff;
-      --border-radius: 12px;
-      --box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-      --transition: all 0.3s ease;
+      --primary: #667eea;
+      --primary-dark: #5a6fd8;
+      --success: #48bb78;
+      --danger: #f56565;
+      --warning: #ed8936;
+      --gray-50: #f9fafb;
+      --gray-100: #f3f4f6;
+      --gray-200: #e5e7eb;
+      --gray-300: #d1d5db;
+      --gray-400: #9ca3af;
+      --gray-500: #6b7280;
+      --gray-600: #4b5563;
+      --gray-700: #374151;
+      --gray-800: #1f2937;
+      --gray-900: #111827;
+      --white: #ffffff;
+      --radius: 16px;
+      --radius-sm: 8px;
+      --shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+      --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     }
 
     * {
@@ -24,169 +35,184 @@
       padding: 0;
     }
 
-    body { 
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
-      margin: 0; 
-      padding: 0; 
-      background-color: #f4f6f8;
-      color: var(--dark-color);
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      background: linear-gradient(135deg, var(--gray-50) 0%, var(--gray-100) 100%);
+      color: var(--gray-900);
       line-height: 1.6;
-    }
-
-    .container { 
-      max-width: 480px; 
-      margin: 0 auto; 
+      min-height: 100vh;
       padding: 20px;
     }
 
-    header {
+    .container {
+      max-width: 420px;
+      margin: 0 auto;
+      position: relative;
+    }
+
+    .header {
       text-align: center;
-      padding-bottom: 20px;
-      margin-bottom: 30px;
-      border-bottom: 1px solid rgba(0,0,0,0.1);
+      margin-bottom: 32px;
+    }
+
+    .logo {
+      width: 64px;
+      height: 64px;
+      background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+      border-radius: var(--radius);
+      margin: 0 auto 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: var(--shadow);
+    }
+
+    .logo svg {
+      width: 32px;
+      height: 32px;
+      color: var(--white);
     }
 
     h1 {
-      font-size: 24px;
-      font-weight: 600;
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--gray-900);
       margin-bottom: 8px;
-      color: var(--primary-color);
     }
 
     .subtitle {
+      color: var(--gray-500);
       font-size: 16px;
-      color: #6c757d;
+      font-weight: 400;
+    }
+
+    .main-card {
+      background: var(--white);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 32px;
+      margin-bottom: 24px;
+      border: 1px solid var(--gray-200);
+    }
+
+    .form-section {
+      margin-bottom: 32px;
+    }
+
+    .section-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--gray-900);
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .section-title svg {
+      width: 20px;
+      height: 20px;
+      color: var(--primary);
+    }
+
+    .form-group {
       margin-bottom: 20px;
     }
 
-    .card {
-      background: var(--card-bg);
-      border-radius: var(--border-radius);
-      box-shadow: var(--box-shadow);
-      padding: 20px;
-      margin-bottom: 20px;
-    }
-
-    .form-group { 
-      margin-bottom: 20px; 
-    }
-
-    label { 
-      display: block; 
+    label {
+      display: block;
       margin-bottom: 8px;
       font-weight: 500;
-      color: #495057;
+      color: var(--gray-700);
+      font-size: 14px;
     }
 
-    input[type="text"], input[type="password"] { 
-      width: 100%; 
-      padding: 12px 15px; 
+    .input-group {
+      position: relative;
+    }
+
+    input[type="text"], input[type="password"] {
+      width: 100%;
+      padding: 12px 16px;
+      border: 2px solid var(--gray-200);
+      border-radius: var(--radius-sm);
       font-size: 16px;
-      border: 1px solid #ced4da;
-      border-radius: 8px;
       transition: var(--transition);
+      background: var(--white);
+      color: var(--gray-900);
     }
 
     input[type="text"]:focus, input[type="password"]:focus {
-      border-color: var(--primary-color);
-      box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.2);
       outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
     }
 
-    button { 
-      background-color: var(--primary-color); 
-      color: white; 
-      border: none; 
-      padding: 12px 20px;
-      font-size: 16px; 
-      font-weight: 500;
-      border-radius: 8px; 
-      cursor: pointer; 
-      width: 100%;
-      transition: var(--transition);
-    }
-
-    button:hover { 
-      background-color: var(--secondary-color); 
-      transform: translateY(-2px);
-    }
-
-    button:active {
-      transform: translateY(0);
-    }
-
-    #status { 
-      margin-top: 20px; 
-      padding: 15px; 
-      text-align: center; 
-      display: none;
-      border-radius: 8px;
-      font-weight: 500;
-    }
-
-    .error { 
-      background-color: #ffebee; 
-      color: var(--danger-color);
-      border: 1px solid rgba(247, 37, 133, 0.2);
-    }
-
-    .success { 
-      background-color: #e3f8fa; 
-      color: #0987a0;
-      border: 1px solid rgba(76, 201, 240, 0.2);
-    }
-
-    .wifi-list-container {
-      margin-top: 30px;
-    }
-
-    .wifi-list-header {
-      display: flex;
-      justify-content: space-between;
+    .btn {
+      display: inline-flex;
       align-items: center;
-      margin-bottom: 15px;
-    }
-
-    .wifi-list-title {
-      font-size: 18px;
-      font-weight: 600;
-      color: #495057;
-    }
-
-    .refresh-btn {
-      background: var(--light-color);
-      color: var(--dark-color);
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 24px;
       border: none;
-      padding: 8px 12px;
-      border-radius: 6px;
-      font-size: 14px;
+      border-radius: var(--radius-sm);
+      font-size: 16px;
+      font-weight: 600;
+      text-decoration: none;
       cursor: pointer;
-      display: flex;
-      align-items: center;
-      width: auto;
-    }
-
-    .refresh-btn:hover {
-      background: #e9ecef;
-    }
-
-    .refresh-btn svg {
-      margin-right: 5px;
-    }
-
-    .wifi-list { 
-      background: var(--card-bg);
-      border-radius: var(--border-radius);
-      box-shadow: var(--box-shadow);
+      transition: var(--transition);
+      width: 100%;
+      position: relative;
       overflow: hidden;
     }
 
-    .wifi-item { 
-      padding: 15px; 
-      border-bottom: 1px solid #f0f0f0; 
+    .btn-primary {
+      background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+      color: var(--white);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow);
+    }
+
+    .btn-secondary {
+      background: var(--gray-100);
+      color: var(--gray-700);
+      border: 2px solid var(--gray-200);
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+      background: var(--gray-200);
+      border-color: var(--gray-300);
+    }
+
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .wifi-section {
+      margin-bottom: 24px;
+    }
+
+    .wifi-list {
+      max-height: 280px;
+      overflow-y: auto;
+      border: 2px solid var(--gray-200);
+      border-radius: var(--radius-sm);
+      background: var(--white);
+    }
+
+    .wifi-item {
+      padding: 16px;
+      border-bottom: 1px solid var(--gray-100);
       cursor: pointer;
       transition: var(--transition);
       display: flex;
+      justify-content: space-between;
       align-items: center;
     }
 
@@ -194,631 +220,800 @@
       border-bottom: none;
     }
 
-    .wifi-item:hover { 
-      background-color: #f8f9fa;
-    }
-
-    .wifi-icon {
-      margin-right: 12px;
-      color: var(--primary-color);
-    }
-
-    .wifi-details {
-      flex: 1;
-    }
-
-    .wifi-name {
-      font-weight: 500;
-      margin-bottom: 4px;
-    }
-
-    .wifi-signal {
-      font-size: 14px;
-      color: #6c757d;
+    .wifi-item:hover {
+      background: var(--gray-50);
     }
 
     .wifi-item.selected {
-      background-color: #e3f2fd;
-      border-left: 4px solid #2196f3;
+      background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+      color: var(--white);
+    }
+
+    .wifi-info {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .wifi-name {
+      font-weight: 600;
+      font-size: 16px;
+    }
+
+    .wifi-security {
+      font-size: 12px;
+      opacity: 0.7;
+    }
+
+    .wifi-signal {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+      opacity: 0.8;
     }
 
     .signal-bars {
       display: flex;
-      align-items: flex-end;
-      gap: 2px;
-      height: 16px;
-      margin-left: 10px;
+      gap: 1px;
+      align-items: end;
     }
 
     .signal-bar {
       width: 3px;
-      background-color: #ddd;
+      background: currentColor;
       border-radius: 1px;
     }
 
-    .signal-bar:nth-child(1) { height: 25%; }
-    .signal-bar:nth-child(2) { height: 50%; }
-    .signal-bar:nth-child(3) { height: 75%; }
-    .signal-bar:nth-child(4) { height: 100%; }
+    .signal-bar:nth-child(1) { height: 4px; }
+    .signal-bar:nth-child(2) { height: 6px; }
+    .signal-bar:nth-child(3) { height: 8px; }
+    .signal-bar:nth-child(4) { height: 10px; }
 
-    .signal-bar.active {
-      background-color: #28a745;
-    }
-
-    .signal-bar.weak { background-color: #dc3545; }
-    .signal-bar.fair { background-color: #ffc107; }
-    .signal-bar.good { background-color: #28a745; }
-
-    .home-btn { 
-      background-color: #6c757d; 
-      color: white; 
-      text-decoration: none; 
-      display: block;
-      text-align: center;
-      padding: 12px 20px;
-      font-size: 16px;
-      font-weight: 500;
-      border-radius: 8px;
-      margin-top: 20px;
-      transition: var(--transition);
-    }
-
-    .home-btn:hover { 
-      background-color: #5a6268;
-      transform: translateY(-2px);
-    }
-
-    .loading-indicator {
-      display: flex;
-      justify-content: center;
-      padding: 20px;
-    }
-
-    .spinner {
-      width: 30px;
-      height: 30px;
-      border: 3px solid rgba(76, 201, 240, 0.3);
+    .settings-toggle {
+      position: absolute;
+      top: 24px;
+      right: 24px;
+      background: var(--gray-100);
+      border: none;
       border-radius: 50%;
-      border-top-color: var(--success-color);
-      animation: spin 1s linear infinite;
-    }
-
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-
-    .success-message {
-      text-align: center;
-      padding: 20px;
-      background-color: #e3f8fa;
-      border-radius: 8px;
-      margin-bottom: 20px;
-      border: 1px solid rgba(76, 201, 240, 0.2);
-    }
-
-    .success-message p {
-      margin-bottom: 10px;
-    }
-
-    .success-message a {
-      color: var(--primary-color);
-      text-decoration: none;
-      font-weight: 500;
-    }
-
-    .success-message button {
-      margin-top: 15px;
-      background-color: var(--success-color);
-    }
-
-    .success-message button:hover {
-      background-color: #3ab4e0;
-    }
-
-    /* 适应不同屏幕尺寸 */
-    @media (max-width: 480px) {
-      .container {
-        padding: 15px;
-      }
-      
-      h1 {
-        font-size: 22px;
-      }
-      
-      input[type="text"], input[type="password"],
-      button, .home-btn {
-        padding: 10px 15px;
-      }
-    }
-
-    /* 认证设置样式 */
-    .auth-settings-container {
-      margin-top: 30px;
-      background: var(--card-bg);
-      border-radius: var(--border-radius);
-      box-shadow: var(--box-shadow);
-      padding: 20px;
-    }
-
-    .card-header {
-      margin-bottom: 20px;
-    }
-
-    .card-header h2 {
-      font-size: 18px;
-      font-weight: 600;
-      color: var(--primary-color);
-      margin-bottom: 5px;
-    }
-
-    .auth-form {
+      width: 40px;
+      height: 40px;
       display: flex;
-      flex-direction: column;
-      gap: 15px;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: var(--transition);
+      color: var(--gray-600);
     }
 
-    .status-message {
-      padding: 12px;
-      border-radius: 6px;
-      text-align: center;
-      margin-top: 15px;
+    .settings-toggle:hover {
+      background: var(--gray-200);
+      color: var(--gray-800);
+    }
+
+    .settings-toggle svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    .advanced-settings {
+      background: var(--gray-50);
+      border: 2px solid var(--gray-200);
+      border-radius: var(--radius-sm);
+      padding: 24px;
+      margin-top: 24px;
       display: none;
     }
 
-    .status-message.success {
-      background-color: rgba(6, 214, 160, 0.1);
-      color: #06d6a0;
+    .advanced-settings.show {
+      display: block;
+      animation: slideDown 0.3s ease-out;
     }
 
-    .status-message.error {
-      background-color: rgba(247, 37, 133, 0.1);
-      color: var(--danger-color);
+    @keyframes slideDown {
+      from {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
 
-    .status-message.loading {
-      background-color: rgba(67, 97, 238, 0.1);
-      color: var(--primary-color);
+    .status-message {
+      padding: 16px;
+      border-radius: var(--radius-sm);
+      margin-bottom: 24px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .status-success {
+      background: #f0fff4;
+      color: var(--success);
+      border: 2px solid #9ae6b4;
+    }
+
+    .status-error {
+      background: #fed7d7;
+      color: var(--danger);
+      border: 2px solid #feb2b2;
+    }
+
+    .status-info {
+      background: #ebf8ff;
+      color: #2b6cb0;
+      border: 2px solid #90cdf4;
+    }
+
+    .loading {
+      display: none;
+      text-align: center;
+      padding: 32px;
+    }
+
+    .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid var(--gray-200);
+      border-top: 3px solid var(--primary);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 16px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    @media (max-width: 480px) {
+      body {
+        padding: 16px;
+      }
+
+      .main-card {
+        padding: 24px;
+      }
+
+      .settings-toggle {
+        top: 16px;
+        right: 16px;
+      }
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <header>
-      <h1>远程开机助手 - 网络设置</h1>
-      <p class="subtitle">请配置设备连接的WiFi网络</p>
-    </header>
-    
-    <div class="card">
-      <form id="wifi-form">
-        <div class="form-group">
-          <label for="ssid">WiFi名称:</label>
-          <input type="text" id="ssid" name="ssid" placeholder="选择或输入WiFi名称" required>
-        </div>
-        <div class="form-group">
-          <label for="password">WiFi密码:</label>
-          <input type="password" id="password" name="password" placeholder="输入WiFi密码">
-        </div>
-        <button type="submit">连接</button>
-      </form>
+    <!-- 设置按钮 -->
+    <button class="settings-toggle" onclick="toggleAdvancedSettings()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="3"></circle>
+        <path d="M12 1v6m0 6v6m11-7h-6m-6 0H1"></path>
+      </svg>
+    </button>
+
+    <!-- 页面头部 -->
+    <div class="header">
+      <div class="logo">
+        <svg viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+        </svg>
+      </div>
+      <h1>网络配置</h1>
+      <p class="subtitle">连接到您的WiFi网络</p>
     </div>
-    
-    <div id="status" class="error"></div>
-    
-    <div class="wifi-list-container">
-      <div class="wifi-list-header">
-        <h2 class="wifi-list-title">可用网络</h2>
-        <button id="refresh-btn" class="refresh-btn">
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.44-4.5M22 12.5a10 10 0 0 1-18.44 4.5"/>
+
+    <!-- 状态消息 -->
+    <div id="status" class="status-message hidden">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+      </svg>
+      <span id="statusText"></span>
+    </div>
+
+    <!-- 加载动画 -->
+    <div id="loading" class="loading">
+      <div class="spinner"></div>
+      <p>正在扫描WiFi网络...</p>
+    </div>
+
+    <!-- 主卡片 -->
+    <div class="main-card">
+      <!-- WiFi网络列表 -->
+      <div class="wifi-section">
+        <div class="section-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M5 12.55a11 11 0 0 1 14.08 0"></path>
+            <path d="M1.42 9a16 16 0 0 1 21.16 0"></path>
+            <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
+            <line x1="12" y1="20" x2="12.01" y2="20"></line>
           </svg>
-          刷新
+          可用网络
+        </div>
+        <div class="wifi-list" id="wifiList">
+          <!-- WiFi列表将通过JavaScript动态填充 -->
+        </div>
+      </div>
+
+      <!-- WiFi连接表单 -->
+      <div class="form-section">
+        <div class="section-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <circle cx="12" cy="16" r="1"></circle>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+          连接设置
+        </div>
+
+        <form id="wifiForm">
+          <div class="form-group">
+            <label for="ssid">网络名称 (SSID)</label>
+            <div class="input-group">
+              <input type="text" id="ssid" name="ssid" placeholder="选择网络或手动输入" required>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="password">密码</label>
+            <div class="input-group">
+              <input type="password" id="password" name="password" placeholder="输入WiFi密码">
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-primary" id="connectBtn">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M5 12.55a11 11 0 0 1 14.08 0"></path>
+              <path d="M1.42 9a16 16 0 0 1 21.16 0"></path>
+              <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
+              <line x1="12" y1="20" x2="12.01" y2="20"></line>
+            </svg>
+            连接网络
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- 高级设置（隐藏） -->
+    <div class="advanced-settings" id="advancedSettings">
+      <div class="section-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
+          <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
+        </svg>
+        登录凭证设置
+      </div>
+
+      <form id="authForm">
+        <div class="form-group">
+          <label for="username">用户名</label>
+          <div class="input-group">
+            <input type="text" id="username" name="username" placeholder="默认: admin">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="adminPassword">管理密码</label>
+          <div class="input-group">
+            <input type="password" id="adminPassword" name="adminPassword" placeholder="默认: admin">
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn-secondary">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M19 21V5a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v5m-4 0h4"></path>
+          </svg>
+          保存凭证
         </button>
-      </div>
-
-      <div id="wifi-list" class="wifi-list">
-        <div class="wifi-loading">正在扫描网络...</div>
-      </div>
-    </div>
-
-    <!-- 添加用户认证设置卡片 -->
-    <div class="auth-settings-container">
-      <div class="card-header">
-        <h2>登录凭据设置</h2>
-        <p class="subtitle">设置访问控制页面的用户名和密码</p>
-        <p class="subtitle" style="font-size: 14px; color: #6c757d;">当前用户名: <span id="current-username-display">加载中...</span></p>
-      </div>
-      <form id="auth-form" class="auth-form">
-        <div class="form-group">
-          <label for="new-username">用户名</label>
-          <input type="text" id="new-username" name="new-username" placeholder="输入新的用户名" required>
-        </div>
-        <div class="form-group">
-          <label for="new-password">密码</label>
-          <input type="password" id="new-password" name="new-password" placeholder="输入新的密码" required>
-        </div>
-        <div class="form-group">
-          <label for="confirm-password">确认密码</label>
-          <input type="password" id="confirm-password" name="confirm-password" placeholder="再次输入密码" required>
-        </div>
-        <button type="submit" class="submit-btn">保存设置</button>
-        <div id="auth-status" class="status-message"></div>
       </form>
-    </div>
-
-    <!-- 返回主页按钮，只在APSTA模式下显示 -->
-    <div id="nav-buttons">
-      <a href="/" class="home-btn" id="home-btn" style="display: none;">返回主控制页面</a>
     </div>
   </div>
 
   <script>
-    // DOM元素
-    const wifiForm = document.getElementById('wifi-form');
-    const ssidInput = document.getElementById('ssid');
-    const passwordInput = document.getElementById('password');
-    const statusDiv = document.getElementById('status');
-    const networksList = document.getElementById('networks-list');
-    const homeBtn = document.getElementById('home-btn');
-    const refreshBtn = document.getElementById('refresh-btn');
+    let selectedWifi = null;
 
-    // 调试信息
-    console.log('DOM元素检查:');
-    console.log('wifiForm:', wifiForm);
-    console.log('networksList:', networksList);
-    console.log('refreshBtn:', refreshBtn);
-    
-    // 检查当前URL是否包含主机名（非192.168.4.1）
-    function checkIfShouldShowHomeButton() {
-      // 如果当前URL不是192.168.4.1，则显示返回按钮
-      const hostname = window.location.hostname;
-      if (hostname !== '192.168.4.1' && hostname !== 'esp32.local') {
-        homeBtn.style.display = 'block';
-      }
-    }
-    
-    // 显示状态信息
-    function showStatus(message, isError) {
-      statusDiv.textContent = message;
-      statusDiv.className = isError ? 'error' : 'success';
-      statusDiv.style.display = 'block';
-      
-      // 滚动到状态信息
-      statusDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
-    
-    // 提交WiFi配置
-    wifiForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      
-      const ssid = ssidInput.value.trim();
-      const password = passwordInput.value.trim();
-      
-      if (!ssid) {
-        showStatus('请输入WiFi名称', true);
+    // 页面加载完成后初始化
+    document.addEventListener('DOMContentLoaded', function() {
+      console.log('配网页面加载完成');
+
+      // 显示当前URL和设备信息
+      console.log('当前URL:', window.location.href);
+      console.log('User Agent:', navigator.userAgent);
+
+      // 防止页面被缓存
+      if (window.performance && window.performance.navigation.type === 2) {
+        console.log('页面从缓存加载，强制刷新');
+        window.location.reload(true);
         return;
       }
-      
-      showStatus('正在连接，请稍候...', false);
-      
+
+      // 延迟一点再开始扫描，确保页面完全加载
+      setTimeout(() => {
+        scanWifiNetworks();
+        setupEventListeners();
+      }, 500);
+    });
+
+    // 设置事件监听器
+    function setupEventListeners() {
+      // WiFi表单提交
+      document.getElementById('wifiForm').addEventListener('submit', handleWifiSubmit);
+
+      // 认证表单提交
+      document.getElementById('authForm').addEventListener('submit', handleAuthSubmit);
+    }
+
+    // 切换高级设置显示
+    function toggleAdvancedSettings() {
+      const settings = document.getElementById('advancedSettings');
+      settings.classList.toggle('show');
+    }
+
+    // 扫描WiFi网络
+    async function scanWifiNetworks(retryCount = 0) {
+      const loading = document.getElementById('loading');
+      const wifiList = document.getElementById('wifiList');
+
+      loading.style.display = 'block';
+      wifiList.innerHTML = '';
+
+      // 更新加载文本
+      const loadingText = loading.querySelector('p');
+      if (retryCount > 0) {
+        loadingText.textContent = `正在重试扫描WiFi网络... (${retryCount}/3)`;
+      } else {
+        loadingText.textContent = '正在扫描WiFi网络...';
+      }
+
+      try {
+        // 增加超时时间
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15秒超时
+
+        const response = await fetch('/api/wifi/scan', {
+          signal: controller.signal,
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+
+        if (data.success && data.networks && data.networks.length > 0) {
+          displayWifiNetworks(data.networks);
+          showStatus(`发现 ${data.networks.length} 个WiFi网络`, 'success');
+        } else if (data.success && data.networks && data.networks.length === 0) {
+          // 扫描成功但没有找到网络
+          wifiList.innerHTML = `
+            <div style="padding: 20px; text-align: center; color: var(--gray-500);">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" style="margin-bottom: 12px; opacity: 0.5;">
+                <path d="M5 12.55a11 11 0 0 1 14.08 0"></path>
+                <path d="M1.42 9a16 16 0 0 1 21.16 0"></path>
+                <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
+                <line x1="12" y1="20" x2="12.01" y2="20"></line>
+              </svg>
+              <div>未发现WiFi网络</div>
+              <div style="font-size: 12px; margin-top: 8px; opacity: 0.7;">请确保附近有可用的WiFi信号</div>
+              <button onclick="scanWifiNetworks()" style="margin-top: 12px; padding: 8px 16px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer;">
+                重新扫描
+              </button>
+            </div>
+          `;
+          showStatus('未发现WiFi网络，请检查周围是否有WiFi信号', 'warning');
+        } else {
+          // 扫描失败，尝试重试
+          if (retryCount < 3) {
+            console.log(`扫描失败，准备重试 ${retryCount + 1}/3`);
+            setTimeout(() => scanWifiNetworks(retryCount + 1), 2000);
+            return;
+          } else {
+            throw new Error(data.message || '扫描WiFi网络失败');
+          }
+        }
+      } catch (error) {
+        console.error('扫描WiFi失败:', error);
+
+        if (error.name === 'AbortError') {
+          // 超时错误
+          if (retryCount < 3) {
+            console.log(`扫描超时，准备重试 ${retryCount + 1}/3`);
+            setTimeout(() => scanWifiNetworks(retryCount + 1), 2000);
+            return;
+          } else {
+            showStatus('WiFi扫描超时，请检查设备状态', 'error');
+          }
+        } else {
+          // 其他错误
+          if (retryCount < 3) {
+            console.log(`网络错误，准备重试 ${retryCount + 1}/3`);
+            setTimeout(() => scanWifiNetworks(retryCount + 1), 2000);
+            return;
+          } else {
+            showStatus('网络连接错误，请刷新页面重试', 'error');
+          }
+        }
+
+        // 显示重试按钮
+        wifiList.innerHTML = `
+          <div style="padding: 20px; text-align: center; color: var(--gray-500);">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" style="margin-bottom: 12px; opacity: 0.5;">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+            <div>扫描失败</div>
+            <div style="font-size: 12px; margin-top: 8px; opacity: 0.7;">${error.message}</div>
+            <button onclick="scanWifiNetworks()" style="margin-top: 12px; padding: 8px 16px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer;">
+              重新扫描
+            </button>
+          </div>
+        `;
+      } finally {
+        loading.style.display = 'none';
+      }
+    }
+
+    // 显示WiFi网络列表
+    function displayWifiNetworks(networks) {
+      const wifiList = document.getElementById('wifiList');
+      wifiList.innerHTML = '';
+
+      if (networks.length === 0) {
+        wifiList.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--gray-500);">未发现WiFi网络</div>';
+        return;
+      }
+
+      networks.forEach(network => {
+        const wifiItem = createWifiItem(network);
+        wifiList.appendChild(wifiItem);
+      });
+    }
+
+    // 创建WiFi项目元素
+    function createWifiItem(network) {
+      const item = document.createElement('div');
+      item.className = 'wifi-item';
+      item.onclick = () => selectWifi(network, item);
+
+      const signalStrength = Math.min(Math.max((network.rssi + 100) / 60 * 100, 0), 100);
+      const signalBars = Math.ceil(signalStrength / 25);
+
+      item.innerHTML = `
+        <div class="wifi-info">
+          <div class="wifi-name">${network.ssid}</div>
+          <div class="wifi-security">${getSecurityText(network.authmode)}</div>
+        </div>
+        <div class="wifi-signal">
+          <div class="signal-bars">
+            ${Array.from({length: 4}, (_, i) =>
+              `<div class="signal-bar" style="opacity: ${i < signalBars ? 1 : 0.3}"></div>`
+            ).join('')}
+          </div>
+          ${Math.round(signalStrength)}%
+        </div>
+      `;
+
+      return item;
+    }
+
+    // 获取安全类型文本
+    function getSecurityText(authmode) {
+      const securityTypes = {
+        0: '开放',
+        1: 'WEP',
+        2: 'WPA PSK',
+        3: 'WPA2 PSK',
+        4: 'WPA WPA2 PSK',
+        5: 'WPA2 Enterprise',
+        6: 'WPA3 PSK',
+        7: 'WPA2 WPA3 PSK'
+      };
+      return securityTypes[authmode] || '未知';
+    }
+
+    // 选择WiFi网络
+    function selectWifi(network, element) {
+      // 移除之前的选中状态
+      document.querySelectorAll('.wifi-item').forEach(item => {
+        item.classList.remove('selected');
+      });
+
+      // 设置新的选中状态
+      element.classList.add('selected');
+      selectedWifi = network;
+
+      // 填充SSID输入框
+      document.getElementById('ssid').value = network.ssid;
+
+      // 如果是开放网络，清空密码框
+      if (network.authmode === 0) {
+        document.getElementById('password').value = '';
+        document.getElementById('password').placeholder = '开放网络，无需密码';
+      } else {
+        document.getElementById('password').placeholder = '输入WiFi密码';
+      }
+    }
+
+    // 处理WiFi连接表单提交
+    async function handleWifiSubmit(event) {
+      event.preventDefault();
+
+      const ssid = document.getElementById('ssid').value.trim();
+      const password = document.getElementById('password').value;
+      const connectBtn = document.getElementById('connectBtn');
+
+      if (!ssid) {
+        showStatus('请选择或输入WiFi网络名称', 'error');
+        return;
+      }
+
+      // 禁用按钮并显示加载状态
+      connectBtn.disabled = true;
+      connectBtn.innerHTML = `
+        <div class="spinner" style="width: 16px; height: 16px; margin: 0 8px 0 0;"></div>
+        正在连接...
+      `;
+
       try {
         const response = await fetch('/api/wifi/connect', {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
           },
           body: JSON.stringify({ ssid, password })
         });
-        
+
         const data = await response.json();
-        
+
         if (data.success) {
-          // 连接成功显示IP地址和成功消息
-          showStatus(`连接成功！${data.message || ''}`, false);
-          
-          // 显示连接成功提示和IP地址
-          setTimeout(() => {
-            statusDiv.innerHTML = `
-              <div class="success-message">
-                <p><strong>连接成功！</strong></p>
-                <p>设备IP地址: ${data.ip}</p>
-                <p>请将手机连接到您的家庭WiFi</p>
-                <p>然后通过 <a href="http://${data.ip}/">http://${data.ip}/</a> 访问</p>
-                <button id="goto-main">进入主页</button>
-              </div>
-            `;
-            
-            // 添加按钮点击事件
-            document.getElementById('goto-main').addEventListener('click', () => {
-              window.location.href = `http://${data.ip}/`;
-            });
-          }, 1000);
-        } else {
-          // 连接失败显示详细错误信息
-          showStatus(`连接失败: ${data.message || '未知错误'}`, true);
-          
-          // 启用重试按钮
-          setTimeout(() => {
-            statusDiv.innerHTML += `
-              <button id="retry-btn" style="margin-top: 10px; background-color: #6c757d;">
-                重新尝试
-              </button>
-            `;
-            
-            document.getElementById('retry-btn').addEventListener('click', () => {
-              statusDiv.style.display = 'none';
-            });
-          }, 1000);
-        }
-      } catch (error) {
-        console.error('Error:', error);
-        showStatus('连接请求失败，请重试', true);
-      }
-    });
-    
-    // 页面加载时检查是否显示返回按钮
-    window.addEventListener('DOMContentLoaded', () => {
-      checkIfShouldShowHomeButton();
-    });
-    
-    // 加载可用WiFi网络
-    async function loadNetworks() {
-      networksList.innerHTML = `
-        <div class="loading-indicator">
-          <div class="spinner"></div>
-          <div style="margin-left: 10px; color: #007bff;">正在扫描WiFi网络...</div>
-        </div>
-      `;
+          // 连接成功，等待获取IP地址
+          showStatus('WiFi连接成功！正在获取IP地址...', 'success');
 
-      try {
-        console.log('开始WiFi扫描请求...');
-        const response = await fetch('/api/wifi/scan');
+          // 等待一段时间让设备获取IP
+          setTimeout(async () => {
+            try {
+              // 获取设备网络信息
+              const networkResponse = await fetch('/api/network/info');
+              const networkData = await networkResponse.json();
 
-        console.log('WiFi扫描响应状态:', response.status);
-
-        if (!response.ok) {
-          throw new Error(`HTTP错误! 状态: ${response.status}`);
-        }
-
-        const data = await response.json();
-        console.log('WiFi扫描数据:', data);
-
-        if (data.success && data.networks && data.networks.length > 0) {
-          networksList.innerHTML = '';
-
-          // 添加扫描结果统计
-          const header = document.createElement('div');
-          header.style.cssText = 'padding: 15px; background: #f8f9fa; border-bottom: 1px solid #dee2e6; font-size: 14px; color: #6c757d;';
-          header.innerHTML = `找到 ${data.count || data.networks.length} 个WiFi网络`;
-          networksList.appendChild(header);
-
-          // 按信号强度排序
-          data.networks.sort((a, b) => b.rssi - a.rssi);
-            
-            data.networks.forEach((network, index) => {
-              const item = document.createElement('div');
-              item.className = 'wifi-item';
-
-              // 使用新的API数据结构
-              const signalStrength = network.signal_strength || '未知';
-              const signalPercent = network.signal_percent || 0;
-              const authMode = network.auth_mode || '未知';
-              const isOpen = network.is_open || false;
-
-              // 安全类型图标
-              const securityIcon = isOpen ?
-                '<span style="color: #28a745;">🔓</span>' :
-                '<span style="color: #ffc107;">🔒</span>';
-
-              // 生成信号强度条
-              const bars = Math.ceil(signalPercent / 25); // 1-4条
-              let signalBars = '<div class="signal-bars">';
-              for (let i = 1; i <= 4; i++) {
-                signalBars += `<div class="signal-bar ${i <= bars ? 'active' : ''}"></div>`;
+              if (networkData.ip && networkData.ip !== '0.0.0.0') {
+                // 显示成功信息和IP地址
+                showConnectionSuccess(networkData.ip, ssid);
+              } else {
+                // IP获取失败，显示通用成功信息
+                showStatus('WiFi连接成功！请检查路由器分配的IP地址', 'success');
               }
-              signalBars += '</div>';
-
-              item.innerHTML = `
-                <div class="wifi-info">
-                  <div class="wifi-name">
-                    ${securityIcon} ${network.ssid}
-                    <span style="font-size: 12px; color: #6c757d; margin-left: 8px;">
-                      ${authMode}
-                    </span>
-                  </div>
-                  <div class="wifi-details">
-                    信道: ${network.channel} |
-                    信号: ${signalStrength} (${network.rssi}dBm)
-                  </div>
-                </div>
-                <div class="wifi-signal">
-                  ${signalBars}
-                  <div style="font-size: 11px; color: #6c757d; margin-top: 2px;">
-                    ${signalPercent}%
-                  </div>
-                </div>
-              `;
-
-              // 添加点击事件
-              item.addEventListener('click', () => {
-                ssidInput.value = network.ssid;
-
-                // 高亮选中的网络
-                document.querySelectorAll('.wifi-item').forEach(el => el.classList.remove('selected'));
-                item.classList.add('selected');
-
-                // 如果是开放网络，直接聚焦到连接按钮
-                if (isOpen) {
-                  passwordInput.value = '';
-                  passwordInput.style.display = 'none';
-                  passwordInput.previousElementSibling.style.display = 'none';
-                } else {
-                  passwordInput.style.display = 'block';
-                  passwordInput.previousElementSibling.style.display = 'block';
-                  passwordInput.focus();
-                }
-
-                // 滚动到表单
-                wifiForm.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-              });
-
-              networksList.appendChild(item);
-            });
+            } catch (error) {
+              console.error('获取网络信息失败:', error);
+              showStatus('WiFi连接成功！请检查路由器分配的IP地址', 'success');
+            }
+          }, 3000);
         } else {
-          // 没有找到网络
-          networksList.innerHTML = `
-            <div style="padding: 30px; text-align: center;">
-              <div style="font-size: 48px; margin-bottom: 15px;">📶</div>
-              <div style="color: #6c757d; margin-bottom: 15px;">
-                ${data.message || '未找到可用的WiFi网络'}
-              </div>
-              <button onclick="retryLoadNetworks()" style="
-                background: #007bff; color: white; border: none;
-                padding: 8px 16px; border-radius: 5px; cursor: pointer;
-              ">重新扫描</button>
-            </div>
-          `;
+          showStatus(data.message || '连接失败，请检查密码', 'error');
         }
-
       } catch (error) {
-        console.error('WiFi扫描错误:', error);
-        networksList.innerHTML = `
-          <div style="padding: 30px; text-align: center;">
-            <div style="font-size: 48px; margin-bottom: 15px;">⚠️</div>
-            <div style="color: #dc3545; margin-bottom: 15px;">
-              扫描失败: ${error.message}
-            </div>
-            <button onclick="retryLoadNetworks()" style="
-              background: #dc3545; color: white; border: none;
-              padding: 8px 16px; border-radius: 5px; cursor: pointer;
-            ">重试</button>
-          </div>
+        console.error('连接失败:', error);
+        showStatus('连接请求失败', 'error');
+      } finally {
+        // 恢复按钮状态
+        connectBtn.disabled = false;
+        connectBtn.innerHTML = `
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M5 12.55a11 11 0 0 1 14.08 0"></path>
+            <path d="M1.42 9a16 16 0 0 1 21.16 0"></path>
+            <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
+            <line x1="12" y1="20" x2="12.01" y2="20"></line>
+          </svg>
+          连接网络
         `;
       }
     }
-    
-    // 重试加载网络
-    function retryLoadNetworks() {
-      networksList.innerHTML = `
-        <div class="loading-indicator">
-          <div class="spinner"></div>
-          <div style="margin-left: 10px">重新扫描中...</div>
-        </div>
-      `;
-      networksList.style.cursor = 'default';
-      networksList.onclick = null;
-      setTimeout(loadNetworks, 1000); // 延迟1秒再重试
-    }
-    
-    // 初始加载网络
-    loadNetworks();
-    
-    // 刷新按钮事件
-    refreshBtn.addEventListener('click', retryLoadNetworks);
 
-    // 添加认证凭据设置的函数
-    const authForm = document.getElementById('auth-form');
-    const authStatus = document.getElementById('auth-status');
-    const currentUsernameDisplay = document.getElementById('current-username-display');
+    // 处理认证表单提交
+    async function handleAuthSubmit(event) {
+      event.preventDefault();
 
-    // 加载当前用户名
-    async function loadCurrentUsername() {
+      const username = document.getElementById('username').value.trim() || 'admin';
+      const adminPassword = document.getElementById('adminPassword').value.trim() || 'admin';
+
       try {
-        const response = await fetch('/api/auth_info');
+        const response = await fetch('/api/set_auth', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ username, password: adminPassword })
+        });
+
         const data = await response.json();
+
         if (data.success) {
-          currentUsernameDisplay.textContent = data.username;
+          showStatus('登录凭证已保存', 'success');
+          // 隐藏高级设置
+          document.getElementById('advancedSettings').classList.remove('show');
         } else {
-          currentUsernameDisplay.textContent = 'admin (默认)';
+          showStatus(data.message || '保存失败', 'error');
         }
       } catch (error) {
-        console.error('加载用户名失败:', error);
-        currentUsernameDisplay.textContent = 'admin (默认)';
+        console.error('保存凭证失败:', error);
+        showStatus('保存请求失败', 'error');
       }
     }
 
-    authForm.addEventListener('submit', function(e) {
-      e.preventDefault();
+    // 显示状态消息
+    function showStatus(message, type = 'info') {
+      const status = document.getElementById('status');
+      const statusText = document.getElementById('statusText');
 
-      const newUsername = document.getElementById('new-username').value.trim();
-      const newPassword = document.getElementById('new-password').value.trim();
-      const confirmPassword = document.getElementById('confirm-password').value.trim();
+      statusText.textContent = message;
+      status.className = `status-message status-${type}`;
+      status.classList.remove('hidden');
 
-      // 验证表单
-      if (!newUsername || !newPassword || !confirmPassword) {
-        showAuthMessage('所有字段都为必填项', 'error');
-        return;
-      }
-
-      if (newPassword !== confirmPassword) {
-        showAuthMessage('两次输入的密码不匹配', 'error');
-        return;
-      }
-
-      if (newUsername.length > 31 || newPassword.length > 63) {
-        showAuthMessage('用户名不能超过31个字符，密码不能超过63个字符', 'error');
-        return;
-      }
-
-      // 显示加载状态
-      showAuthMessage('正在保存设置...', 'loading');
-
-      // 发送设置请求
-      fetch('/api/set_auth', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          username: newUsername,
-          password: newPassword
-        })
-      })
-      .then(response => response.json())
-      .then(data => {
-        if (data.success) {
-          showAuthMessage('登录凭据设置成功！', 'success');
-          // 清除表单
-          document.getElementById('new-username').value = '';
-          document.getElementById('new-password').value = '';
-          document.getElementById('confirm-password').value = '';
-
-          // 更新显示的当前用户名
-          currentUsernameDisplay.textContent = newUsername;
-
-          // 如果处于STA模式，清除本地认证状态，要求重新登录
-          if (!isAPMode) {
-            localStorage.removeItem('authenticated');
-          }
-        } else {
-          showAuthMessage(data.message || '设置失败', 'error');
-        }
-      })
-      .catch(error => {
-        console.error('Error:', error);
-        showAuthMessage('设置时发生错误', 'error');
-      });
-    });
-    
-    function showAuthMessage(message, type) {
-      authStatus.textContent = message;
-      authStatus.className = 'status-message';
-      
-      if (type) {
-        authStatus.classList.add(type);
-      }
-      
-      authStatus.style.display = 'block';
-      
-      if (type === 'success' || type === 'error') {
+      // 3秒后自动隐藏（除非是成功消息）
+      if (type !== 'success') {
         setTimeout(() => {
-          authStatus.style.display = 'none';
-        }, 5000);
+          status.classList.add('hidden');
+        }, 3000);
       }
     }
 
-    // 页面加载时初始化
-    document.addEventListener('DOMContentLoaded', function() {
-      loadCurrentUsername();
+    // 显示连接成功信息
+    function showConnectionSuccess(deviceIP, wifiName) {
+      const status = document.getElementById('status');
+      const statusText = document.getElementById('statusText');
+
+      // 创建成功信息的HTML内容
+      const successHTML = `
+        <div style="text-align: center;">
+          <div style="font-size: 18px; font-weight: 600; margin-bottom: 12px; color: var(--success);">
+            🎉 WiFi连接成功！
+          </div>
+          <div style="margin-bottom: 8px;">
+            <strong>已连接到：</strong> ${wifiName}
+          </div>
+          <div style="margin-bottom: 16px;">
+            <strong>设备IP地址：</strong>
+            <span style="font-family: monospace; background: rgba(72, 187, 120, 0.1); padding: 4px 8px; border-radius: 4px; font-weight: 600;">
+              ${deviceIP}
+            </span>
+          </div>
+          <div style="font-size: 14px; color: var(--gray-600); margin-bottom: 16px;">
+            请在浏览器中访问上述IP地址来控制设备
+          </div>
+          <div style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;">
+            <button onclick="copyToClipboard('${deviceIP}')" style="padding: 6px 12px; background: var(--success); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+              复制IP地址
+            </button>
+            <button onclick="openDeviceURL('${deviceIP}')" style="padding: 6px 12px; background: var(--primary); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+              打开设备页面
+            </button>
+          </div>
+        </div>
+      `;
+
+      statusText.innerHTML = successHTML;
+      status.className = 'status-message status-success';
+      status.classList.remove('hidden');
+    }
+
+    // 复制IP地址到剪贴板
+    function copyToClipboard(text) {
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(text).then(() => {
+          showTemporaryMessage('IP地址已复制到剪贴板');
+        }).catch(err => {
+          console.error('复制失败:', err);
+          fallbackCopyTextToClipboard(text);
+        });
+      } else {
+        fallbackCopyTextToClipboard(text);
+      }
+    }
+
+    // 备用复制方法
+    function fallbackCopyTextToClipboard(text) {
+      const textArea = document.createElement("textarea");
+      textArea.value = text;
+      textArea.style.position = "fixed";
+      textArea.style.left = "-999999px";
+      textArea.style.top = "-999999px";
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+
+      try {
+        document.execCommand('copy');
+        showTemporaryMessage('IP地址已复制到剪贴板');
+      } catch (err) {
+        console.error('复制失败:', err);
+        showTemporaryMessage('复制失败，请手动复制IP地址');
+      }
+
+      document.body.removeChild(textArea);
+    }
+
+    // 打开设备URL
+    function openDeviceURL(ip) {
+      const url = `http://${ip}`;
+      window.open(url, '_blank');
+    }
+
+    // 显示临时消息
+    function showTemporaryMessage(message) {
+      const tempDiv = document.createElement('div');
+      tempDiv.textContent = message;
+      tempDiv.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: var(--success);
+        color: white;
+        padding: 12px 16px;
+        border-radius: 6px;
+        font-size: 14px;
+        z-index: 10000;
+        box-shadow: var(--shadow);
+      `;
+
+      document.body.appendChild(tempDiv);
+
+      setTimeout(() => {
+        tempDiv.style.opacity = '0';
+        tempDiv.style.transition = 'opacity 0.3s ease';
+        setTimeout(() => {
+          document.body.removeChild(tempDiv);
+        }, 300);
+      }, 2000);
+    }
+
+    // 刷新WiFi列表
+    function refreshWifiList() {
+      scanWifiNetworks();
+    }
+
+
+
+    // 键盘事件处理
+    document.addEventListener('keydown', function(event) {
+      // ESC键关闭高级设置
+      if (event.key === 'Escape') {
+        document.getElementById('advancedSettings').classList.remove('show');
+      }
+    });
+
+    // 页面可见性变化处理
+    document.addEventListener('visibilitychange', function() {
+      if (document.visibilityState === 'visible') {
+        console.log('页面变为可见');
+        // 页面重新可见时，可以选择重新扫描WiFi
+        // scanWifiNetworks();
+      } else {
+        console.log('页面变为隐藏');
+      }
+    });
+
+    // 防止页面意外关闭
+    window.addEventListener('beforeunload', function(event) {
+      console.log('页面即将关闭');
+      // 在某些情况下可以阻止页面关闭
+      // event.preventDefault();
+      // event.returnValue = '';
     });
   </script>
 </body>

@@ -2,15 +2,28 @@
 #include "wifi_manager/wifi_manager.h"
 #include "pc_monitor/pc_monitor.h"
 #include "servo_control/servo_control.h"
+
+// AP模式配置常量（与wifi_manager.c保持一致）
+#define DEFAULT_AP_SSID "ESP32开机助手"
+
+// Session管理
+#define SESSION_TOKEN_LENGTH 32
+#define SESSION_TIMEOUT_SECONDS 3600  // 1小时超时
+
+static char current_session_token[SESSION_TOKEN_LENGTH + 1] = {0};
+static time_t session_created_time = 0;
 #include "esp_log.h"
 #include "esp_vfs.h"
 #include "esp_spiffs.h"
+#include "esp_random.h"
+#include "esp_wifi.h"
 #include "cJSON.h"
 #include "esp_http_server.h"
 #include <string.h>
 #include <fcntl.h>
 #include <stdbool.h>
 #include <errno.h>
+#include <time.h>
 #include "nvs.h"
 
 // 定义MIN宏
@@ -19,6 +32,98 @@
 #endif
 
 static const char *TAG = "web_server";
+
+// Session管理函数
+static void generate_session_token(char *token, size_t length) {
+    const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    for (size_t i = 0; i < length - 1; i++) {
+        token[i] = charset[esp_random() % (sizeof(charset) - 1)];
+    }
+    token[length - 1] = '\0';
+}
+
+static bool is_session_valid(void) {
+    if (strlen(current_session_token) == 0) {
+        return false;
+    }
+
+    time_t current_time;
+    time(&current_time);
+
+    if (current_time - session_created_time > SESSION_TIMEOUT_SECONDS) {
+        // Session过期，清除token
+        memset(current_session_token, 0, sizeof(current_session_token));
+        session_created_time = 0;
+        return false;
+    }
+
+    return true;
+}
+
+static void create_new_session(void) {
+    generate_session_token(current_session_token, SESSION_TOKEN_LENGTH + 1);
+    time(&session_created_time);
+    ESP_LOGI(TAG, "创建新session: %s", current_session_token);
+}
+
+static bool validate_session_token(const char *token) {
+    if (!token || strlen(token) == 0) {
+        return false;
+    }
+
+    if (!is_session_valid()) {
+        return false;
+    }
+
+    return strcmp(token, current_session_token) == 0;
+}
+
+// 认证中间件 - 检查请求是否已认证
+static bool check_authentication(httpd_req_t *req) {
+    // 从Cookie或Header中获取session token
+    size_t cookie_len = httpd_req_get_hdr_value_len(req, "Cookie");
+    if (cookie_len > 0) {
+        char *cookie_buf = malloc(cookie_len + 1);
+        if (cookie_buf) {
+            if (httpd_req_get_hdr_value_str(req, "Cookie", cookie_buf, cookie_len + 1) == ESP_OK) {
+                // 查找session token
+                char *token_start = strstr(cookie_buf, "session_token=");
+                if (token_start) {
+                    token_start += strlen("session_token=");
+                    char *token_end = strchr(token_start, ';');
+                    if (token_end) {
+                        *token_end = '\0';
+                    }
+
+                    bool valid = validate_session_token(token_start);
+                    free(cookie_buf);
+                    return valid;
+                }
+            }
+            free(cookie_buf);
+        }
+    }
+
+    // 也检查Authorization header
+    size_t auth_len = httpd_req_get_hdr_value_len(req, "Authorization");
+    if (auth_len > 0) {
+        char *auth_buf = malloc(auth_len + 1);
+        if (auth_buf) {
+            if (httpd_req_get_hdr_value_str(req, "Authorization", auth_buf, auth_len + 1) == ESP_OK) {
+                // 检查Bearer token格式
+                if (strncmp(auth_buf, "Bearer ", 7) == 0) {
+                    char *token = auth_buf + 7;
+                    bool valid = validate_session_token(token);
+                    free(auth_buf);
+                    return valid;
+                }
+            }
+            free(auth_buf);
+        }
+    }
+
+    return false;
+}
 
 // Web服务器句柄
 static httpd_handle_t s_server = NULL;
@@ -63,37 +168,49 @@ static void broadcast_pc_state(pc_state_t state)
     cJSON *root = cJSON_CreateObject();
     cJSON_AddStringToObject(root, "event", "pc_state");
     cJSON_AddBoolToObject(root, "is_on", state == PC_STATE_ON);
-    
+
     char *json_str = cJSON_Print(root);
     if (json_str == NULL) {
         ESP_LOGE(TAG, "创建JSON字符串失败");
         cJSON_Delete(root);
         return;
     }
-    
+
+    // 统计活跃的WebSocket客户端数量
+    int active_clients = 0;
+
     // 发送到所有连接的客户端
     for (int i = 0; i < MAX_WS_CLIENTS; i++) {
         if (s_ws_client_fds[i] != -1) {
+            active_clients++;
             httpd_ws_frame_t ws_pkt;
             memset(&ws_pkt, 0, sizeof(httpd_ws_frame_t));
             ws_pkt.payload = (uint8_t *)json_str;
             ws_pkt.len = strlen(json_str);
             ws_pkt.type = HTTPD_WS_TYPE_TEXT;
-            
+
             esp_err_t ret = httpd_ws_send_frame_async(s_server, s_ws_client_fds[i], &ws_pkt);
             if (ret != ESP_OK) {
-                ESP_LOGE(TAG, "发送WebSocket消息失败: %d", ret);
+                ESP_LOGE(TAG, "发送WebSocket消息到客户端 %d 失败: %d", i, ret);
+                // 发送失败，可能客户端已断开，清除该客户端
+                s_ws_client_fds[i] = -1;
+                active_clients--;
             }
         }
     }
-    
+
+    ESP_LOGI(TAG, "状态变化广播完成，发送到 %d 个WebSocket客户端", active_clients);
+
     free(json_str);
     cJSON_Delete(root);
 }
 
-// PC状态变化回调
+// PC状态变化回调（只在状态真正变化时被调用）
 static void pc_state_changed_cb(pc_state_t new_state)
 {
+    ESP_LOGI(TAG, "PC状态发生变化，主动推送到WebSocket客户端: %s",
+             new_state == PC_STATE_ON ? "开机" : "关机");
+
     // 广播新状态给WebSocket客户端
     broadcast_pc_state(new_state);
 }
@@ -310,10 +427,16 @@ static esp_err_t send_file(httpd_req_t *req, const char *filepath)
 // 根URL处理函数（主页）
 static esp_err_t root_get_handler(httpd_req_t *req)
 {
-    // 直接检查请求的主机名和当前WiFi模式
+    ESP_LOGI(TAG, "收到根路径请求: %s", req->uri);
+
+    // 获取当前WiFi模式
+    wifi_working_mode_t mode = wifi_manager_get_mode();
+
+    // 检查请求的主机名和客户端IP，确保准确识别AP访问
     size_t host_len = httpd_req_get_hdr_value_len(req, "Host");
     bool is_ap_access = false;
-    
+
+    // 方法1：检查Host头
     if (host_len > 0) {
         char *host_buf = malloc(host_len + 1);
         if (host_buf) {
@@ -322,43 +445,246 @@ static esp_err_t root_get_handler(httpd_req_t *req)
                 // 检查是否是AP IP地址 (192.168.4.1)
                 if (strncmp(host_buf, "192.168.4.1", 11) == 0) {
                     is_ap_access = true;
+                    ESP_LOGI(TAG, "通过Host头检测到AP访问");
                 }
             }
             free(host_buf);
         }
     }
-    
-    // 如果无法从Host头判断，则使用WiFi模式
-    if (!is_ap_access && wifi_manager_get_mode() == WIFI_MANAGER_MODE_AP) {
-        is_ap_access = true;
+
+    // 方法2：检查是否有AP接口活跃并分析Host头（更可靠的方法）
+    if (!is_ap_access) {
+        // 检查AP接口是否启用
+        wifi_mode_t wifi_mode;
+        if (esp_wifi_get_mode(&wifi_mode) == ESP_OK) {
+            if (wifi_mode == WIFI_MODE_AP || wifi_mode == WIFI_MODE_APSTA) {
+                ESP_LOGI(TAG, "AP接口已启用，WiFi模式: %d", wifi_mode);
+
+                // 分析Host头来判断是否为AP访问
+                if (host_len > 0) {
+                    char *host_buf = malloc(host_len + 1);
+                    if (host_buf) {
+                        if (httpd_req_get_hdr_value_str(req, "Host", host_buf, host_len + 1) == ESP_OK) {
+                            ESP_LOGI(TAG, "分析Host头: %s", host_buf);
+
+                            // 明确检查是否为AP网段 (192.168.4.x)
+                            if (strncmp(host_buf, "192.168.4.", 10) == 0) {
+                                is_ap_access = true;
+                                ESP_LOGI(TAG, "通过Host头确认AP访问: %s", host_buf);
+                            }
+                            // 如果Host头包含端口号，也要检查
+                            else if (strncmp(host_buf, "192.168.4.1:", 12) == 0) {
+                                is_ap_access = true;
+                                ESP_LOGI(TAG, "通过Host头(含端口)确认AP访问: %s", host_buf);
+                            }
+                            // 在APSTA模式下，如果Host不是明确的STA IP，可能是AP访问
+                            else if (wifi_mode == WIFI_MODE_APSTA) {
+                                // 获取STA的IP地址进行比较
+                                esp_netif_ip_info_t sta_ip_info;
+                                esp_netif_t *sta_netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+                                if (sta_netif && esp_netif_get_ip_info(sta_netif, &sta_ip_info) == ESP_OK) {
+                                    char sta_ip_str[16];
+                                    sprintf(sta_ip_str, IPSTR, IP2STR(&sta_ip_info.ip));
+                                    ESP_LOGI(TAG, "STA IP: %s", sta_ip_str);
+
+                                    // 如果Host不是STA的IP，则可能是AP访问
+                                    if (strncmp(host_buf, sta_ip_str, strlen(sta_ip_str)) != 0) {
+                                        is_ap_access = true;
+                                        ESP_LOGI(TAG, "APSTA模式下，Host不是STA IP，判断为AP访问: %s", host_buf);
+                                    }
+                                } else {
+                                    // 无法获取STA IP，保守判断为AP访问
+                                    is_ap_access = true;
+                                    ESP_LOGI(TAG, "APSTA模式下，无法获取STA IP，保守判断为AP访问: %s", host_buf);
+                                }
+                            }
+                        }
+                        free(host_buf);
+                    }
+                }
+            }
+        }
     }
-    
-    // 如果是通过AP访问，重定向到配网页面
+
+    // 方法3：如果是纯AP模式，肯定是AP访问
+    if (!is_ap_access && mode == WIFI_MANAGER_MODE_AP) {
+        is_ap_access = true;
+        ESP_LOGI(TAG, "纯AP模式，确认为AP访问");
+    }
+
+
+
+    // 检查STA是否已连接到WiFi（统一APSTA模式下的判断）
+    bool sta_connected = false;
+    wifi_ap_record_t ap_info;
+    if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
+        sta_connected = true;
+        ESP_LOGI(TAG, "STA已连接到: %s", ap_info.ssid);
+    }
+
+    // 详细的访问状态日志
+    wifi_mode_t current_wifi_mode;
+    esp_wifi_get_mode(&current_wifi_mode);
+    ESP_LOGI(TAG, "访问状态总结 - AP访问: %s, WiFi管理器模式: %d, 实际WiFi模式: %d, STA连接: %s",
+             is_ap_access ? "是" : "否", mode, current_wifi_mode, sta_connected ? "是" : "否");
+
     if (is_ap_access) {
-        ESP_LOGI(TAG, "通过AP访问，重定向到配网页面");
+        // 通过AP访问，无论设备是否连接WiFi都强制要求登录认证
+        ESP_LOGI(TAG, "检测到AP访问，强制要求登录认证 (STA连接状态: %s)",
+                 sta_connected ? "已连接" : "未连接");
+
+        // 检查是否已认证
+        if (!check_authentication(req)) {
+            ESP_LOGI(TAG, "AP访问未认证，重定向到登录页面");
+            httpd_resp_set_status(req, "302 Found");
+            httpd_resp_set_hdr(req, "Location", "/login");
+            httpd_resp_set_hdr(req, "Cache-Control", "no-cache, no-store, must-revalidate");
+            httpd_resp_send(req, NULL, 0);
+            return ESP_OK;
+        }
+
+        // AP访问已认证，重定向到配网页面
+        ESP_LOGI(TAG, "AP访问已认证，重定向到配网页面 (STA连接状态: %s)",
+                 sta_connected ? "已连接" : "未连接");
         httpd_resp_set_status(req, "302 Found");
         httpd_resp_set_hdr(req, "Location", "/setup");
+        httpd_resp_set_hdr(req, "Cache-Control", "no-cache, no-store, must-revalidate");
         httpd_resp_send(req, NULL, 0);
         return ESP_OK;
     }
-    
-    // 通过STA模式（家庭WiFi）访问，返回主控制页面
-    // 但需要先检查是否已通过认证，如果没有，先返回登录页面
-    ESP_LOGI(TAG, "通过STA访问，显示控制页面");
+
+    // 如果处于纯AP模式或STA未连接，重定向到配网页面
+    if (mode == WIFI_MANAGER_MODE_AP || !sta_connected) {
+        ESP_LOGI(TAG, "需要配网，重定向到配网页面 (模式: %d, STA连接: %s)",
+                 mode, sta_connected ? "是" : "否");
+        httpd_resp_set_status(req, "302 Found");
+        httpd_resp_set_hdr(req, "Location", "/setup");
+        httpd_resp_set_hdr(req, "Cache-Control", "no-cache, no-store, must-revalidate");
+        httpd_resp_send(req, NULL, 0);
+        return ESP_OK;
+    }
+
+    // 通过STA模式（家庭WiFi）访问，需要先检查认证
+    ESP_LOGI(TAG, "STA模式访问，检查认证状态");
+
+    // 检查是否已认证
+    if (!check_authentication(req)) {
+        ESP_LOGI(TAG, "STA访问未认证，重定向到登录页面");
+        httpd_resp_set_status(req, "302 Found");
+        httpd_resp_set_hdr(req, "Location", "/login");
+        httpd_resp_set_hdr(req, "Cache-Control", "no-cache, no-store, must-revalidate");
+        httpd_resp_send(req, NULL, 0);
+        return ESP_OK;
+    }
+
+    // STA访问已认证，显示控制页面
+    ESP_LOGI(TAG, "STA访问已认证，显示控制页面");
     return send_file(req, "/web/index.html");
 }
 
 // 设置页面处理函数
 static esp_err_t setup_get_handler(httpd_req_t *req)
 {
+    ESP_LOGI(TAG, "收到配网页面请求");
+
+    // 检查是否通过AP访问（使用与根路径相同的检测逻辑）
+    size_t host_len = httpd_req_get_hdr_value_len(req, "Host");
+    bool is_ap_access = false;
+
+    // 方法1：检查Host头
+    if (host_len > 0) {
+        char *host_buf = malloc(host_len + 1);
+        if (host_buf) {
+            if (httpd_req_get_hdr_value_str(req, "Host", host_buf, host_len + 1) == ESP_OK) {
+                ESP_LOGI(TAG, "配网页面请求的Host: %s", host_buf);
+                // 检查是否是AP IP地址 (192.168.4.x)
+                if (strncmp(host_buf, "192.168.4.", 10) == 0) {
+                    is_ap_access = true;
+                    ESP_LOGI(TAG, "配网页面通过Host头检测到AP访问");
+                }
+            }
+            free(host_buf);
+        }
+    }
+
+    // 方法2：在APSTA模式下进一步检查
+    if (!is_ap_access) {
+        wifi_mode_t wifi_mode;
+        if (esp_wifi_get_mode(&wifi_mode) == ESP_OK && wifi_mode == WIFI_MODE_APSTA) {
+            if (host_len > 0) {
+                char *host_buf = malloc(host_len + 1);
+                if (host_buf) {
+                    if (httpd_req_get_hdr_value_str(req, "Host", host_buf, host_len + 1) == ESP_OK) {
+                        // 获取STA的IP地址进行比较
+                        esp_netif_ip_info_t sta_ip_info;
+                        esp_netif_t *sta_netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+                        if (sta_netif && esp_netif_get_ip_info(sta_netif, &sta_ip_info) == ESP_OK) {
+                            char sta_ip_str[16];
+                            sprintf(sta_ip_str, IPSTR, IP2STR(&sta_ip_info.ip));
+
+                            // 如果Host不是STA的IP，则可能是AP访问
+                            if (strncmp(host_buf, sta_ip_str, strlen(sta_ip_str)) != 0) {
+                                is_ap_access = true;
+                                ESP_LOGI(TAG, "配网页面APSTA模式下，Host不是STA IP，判断为AP访问: %s", host_buf);
+                            }
+                        }
+                    }
+                    free(host_buf);
+                }
+            }
+        }
+    }
+
+    // 如果是AP访问，需要检查认证
+    if (is_ap_access) {
+        ESP_LOGI(TAG, "AP访问配网页面，检查认证状态");
+        if (!check_authentication(req)) {
+            ESP_LOGI(TAG, "AP访问配网页面未认证，重定向到登录页面");
+            httpd_resp_set_status(req, "302 Found");
+            httpd_resp_set_hdr(req, "Location", "/login");
+            httpd_resp_set_hdr(req, "Cache-Control", "no-cache, no-store, must-revalidate");
+            httpd_resp_send(req, NULL, 0);
+            return ESP_OK;
+        }
+        ESP_LOGI(TAG, "AP访问配网页面已认证，显示配网页面");
+    } else {
+        ESP_LOGI(TAG, "STA访问配网页面，直接显示");
+    }
+
+    // 设置响应头，防止缓存
+    httpd_resp_set_hdr(req, "Cache-Control", "no-cache, no-store, must-revalidate");
+    httpd_resp_set_hdr(req, "Pragma", "no-cache");
+    httpd_resp_set_hdr(req, "Expires", "0");
+
     return send_file(req, "/web/setup.html");
+}
+
+// 登录页面处理函数
+static esp_err_t login_get_handler(httpd_req_t *req)
+{
+    ESP_LOGI(TAG, "收到登录页面请求");
+
+    // 设置响应头，防止缓存
+    httpd_resp_set_hdr(req, "Cache-Control", "no-cache, no-store, must-revalidate");
+    httpd_resp_set_hdr(req, "Pragma", "no-cache");
+    httpd_resp_set_hdr(req, "Expires", "0");
+
+    return send_file(req, "/web/login.html");
 }
 
 // 获取PC状态API
 static esp_err_t status_get_handler(httpd_req_t *req)
 {
     httpd_resp_set_type(req, "application/json");
-    
+
+    // 检查认证
+    if (!check_authentication(req)) {
+        ESP_LOGW(TAG, "未认证的状态查询请求");
+        httpd_resp_set_status(req, "401 Unauthorized");
+        httpd_resp_sendstr(req, "{\"success\":false,\"message\":\"未认证，请先登录\"}");
+        return ESP_OK;
+    }
+
     // 获取当前PC状态
     pc_state_t state = pc_monitor_get_state();
     
@@ -378,6 +704,17 @@ static esp_err_t status_get_handler(httpd_req_t *req)
 // 开机操作API
 static esp_err_t power_post_handler(httpd_req_t *req)
 {
+    ESP_LOGI(TAG, "收到PC开机请求");
+
+    // 检查认证
+    if (!check_authentication(req)) {
+        ESP_LOGW(TAG, "未认证的PC开机请求");
+        httpd_resp_set_status(req, "401 Unauthorized");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, "{\"success\":false,\"message\":\"未认证，请先登录\"}");
+        return ESP_OK;
+    }
+
     // 获取当前PC状态
     pc_state_t state = pc_monitor_get_state();
     
@@ -432,9 +769,18 @@ static const char* get_auth_mode_desc(wifi_auth_mode_t auth_mode) {
 // WiFi扫描API - 优化版
 static esp_err_t wifi_scan_handler(httpd_req_t *req)
 {
+    // 设置响应头
     httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    httpd_resp_set_hdr(req, "Connection", "close"); // 确保连接关闭
 
     ESP_LOGI(TAG, "收到WiFi扫描请求");
+
+    // 记录内存使用情况
+    size_t free_heap = esp_get_free_heap_size();
+    size_t min_free_heap = esp_get_minimum_free_heap_size();
+    ESP_LOGI(TAG, "内存状态 - 可用: %d 字节, 最小可用: %d 字节", free_heap, min_free_heap);
 
     // 记录当前WiFi模式
     wifi_mode_t current_mode;
@@ -443,25 +789,37 @@ static esp_err_t wifi_scan_handler(httpd_req_t *req)
 
     // 创建响应JSON对象
     cJSON *root = cJSON_CreateObject();
-
-    // 设置较短的超时时间，防止前端等待太久
-    httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
+    if (root == NULL) {
+        ESP_LOGE(TAG, "创建JSON对象失败");
+        httpd_resp_send_500(req);
+        return ESP_FAIL;
+    }
 
     ESP_LOGI(TAG, "开始执行WiFi扫描...");
 
     // 执行WiFi扫描
     uint16_t ap_count = 0;
     wifi_ap_record_t *ap_records = wifi_manager_scan_networks(&ap_count);
+    bool need_free_records = false; // 标记是否需要释放ap_records
 
     ESP_LOGI(TAG, "WiFi扫描完成，结果: ap_count=%d, ap_records=%p", ap_count, ap_records);
 
-    if (ap_records == NULL || ap_count == 0) {
-        ESP_LOGW(TAG, "WiFi扫描失败或未找到网络");
+    if (ap_records == NULL) {
+        ESP_LOGE(TAG, "WiFi扫描失败，返回NULL");
 
         cJSON_AddBoolToObject(root, "success", false);
         cJSON_AddArrayToObject(root, "networks");
-        cJSON_AddStringToObject(root, "message", "未找到可用的WiFi网络，请检查周围是否有WiFi信号");
+        cJSON_AddStringToObject(root, "message", "WiFi扫描失败，请稍后重试");
         cJSON_AddNumberToObject(root, "count", 0);
+    } else if (ap_count == 0) {
+        ESP_LOGW(TAG, "WiFi扫描成功但未找到网络");
+
+        cJSON_AddBoolToObject(root, "success", true);
+        cJSON_AddArrayToObject(root, "networks");
+        cJSON_AddStringToObject(root, "message", "未发现WiFi网络，请检查周围是否有WiFi信号");
+        cJSON_AddNumberToObject(root, "count", 0);
+
+        need_free_records = true; // 标记需要释放
     } else {
         ESP_LOGI(TAG, "WiFi扫描成功，找到 %d 个网络", ap_count);
 
@@ -470,10 +828,23 @@ static esp_err_t wifi_scan_handler(httpd_req_t *req)
         cJSON_AddStringToObject(root, "message", "扫描完成");
 
         cJSON *networks = cJSON_AddArrayToObject(root, "networks");
+        if (networks == NULL) {
+            ESP_LOGE(TAG, "创建networks数组失败");
+            cJSON_Delete(root);
+            if (ap_records != NULL) {
+                free(ap_records);
+            }
+            httpd_resp_send_500(req);
+            return ESP_FAIL;
+        }
 
         // 添加网络信息
         for (int i = 0; i < ap_count; i++) {
             cJSON *network = cJSON_CreateObject();
+            if (network == NULL) {
+                ESP_LOGE(TAG, "创建network对象失败");
+                continue;
+            }
 
             // 基本信息
             cJSON_AddStringToObject(network, "ssid", (char *)ap_records[i].ssid);
@@ -483,6 +854,7 @@ static esp_err_t wifi_scan_handler(httpd_req_t *req)
             // 附加信息
             cJSON_AddStringToObject(network, "signal_strength", get_signal_strength_desc(ap_records[i].rssi));
             cJSON_AddStringToObject(network, "auth_mode", get_auth_mode_desc(ap_records[i].authmode));
+            cJSON_AddNumberToObject(network, "authmode", ap_records[i].authmode);
             cJSON_AddBoolToObject(network, "is_open", ap_records[i].authmode == WIFI_AUTH_OPEN);
 
             // 计算信号强度百分比 (0-100%)
@@ -497,19 +869,169 @@ static esp_err_t wifi_scan_handler(httpd_req_t *req)
             cJSON_AddItemToArray(networks, network);
         }
 
-        // 释放内存
-        free(ap_records);
+        need_free_records = true; // 标记需要释放
     }
 
     // 发送响应
     char *json_str = cJSON_Print(root);
-    httpd_resp_sendstr(req, json_str);
+    if (json_str == NULL) {
+        ESP_LOGE(TAG, "创建JSON字符串失败");
+        cJSON_Delete(root);
+        if (need_free_records && ap_records != NULL) {
+            free(ap_records);
+        }
+        httpd_resp_send_500(req);
+        return ESP_FAIL;
+    }
 
+    esp_err_t ret = httpd_resp_sendstr(req, json_str);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "发送HTTP响应失败: %s", esp_err_to_name(ret));
+    }
+
+    // 清理资源
     free(json_str);
     cJSON_Delete(root);
-    free(ap_records);
-    
-    return ESP_OK;
+
+    // 统一释放ap_records内存
+    if (need_free_records && ap_records != NULL) {
+        free(ap_records);
+        ESP_LOGI(TAG, "已释放WiFi扫描结果内存");
+    }
+
+    // 记录最终内存状态
+    size_t final_free_heap = esp_get_free_heap_size();
+    ESP_LOGI(TAG, "WiFi扫描处理完成 - 最终可用内存: %d 字节", final_free_heap);
+
+    return ret;
+}
+
+// 网络信息API - 获取设备IP地址等网络信息
+static esp_err_t network_info_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+
+    ESP_LOGI(TAG, "收到网络信息请求");
+
+    // 记录内存使用情况
+    size_t free_heap = esp_get_free_heap_size();
+    ESP_LOGI(TAG, "网络信息请求 - 可用内存: %d 字节", free_heap);
+
+    // 创建响应JSON对象
+    cJSON *root = cJSON_CreateObject();
+    if (root == NULL) {
+        ESP_LOGE(TAG, "创建JSON对象失败");
+        httpd_resp_send_500(req);
+        return ESP_FAIL;
+    }
+
+    // 获取WiFi模式
+    wifi_mode_t mode;
+    esp_err_t mode_err = esp_wifi_get_mode(&mode);
+
+    // 获取STA接口信息
+    esp_netif_t *sta_netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    esp_netif_ip_info_t ip_info;
+    char ip_str[16] = "0.0.0.0";
+    char netmask_str[16] = "0.0.0.0";
+    char gateway_str[16] = "0.0.0.0";
+    bool sta_connected = false;
+
+    if (sta_netif != NULL) {
+        esp_err_t ip_err = esp_netif_get_ip_info(sta_netif, &ip_info);
+        if (ip_err == ESP_OK && ip_info.ip.addr != 0) {
+            esp_ip4addr_ntoa(&ip_info.ip, ip_str, sizeof(ip_str));
+            esp_ip4addr_ntoa(&ip_info.netmask, netmask_str, sizeof(netmask_str));
+            esp_ip4addr_ntoa(&ip_info.gw, gateway_str, sizeof(gateway_str));
+            sta_connected = true;
+            ESP_LOGI(TAG, "STA IP信息 - IP: %s, 网关: %s", ip_str, gateway_str);
+        }
+    }
+
+    // 获取AP接口信息
+    esp_netif_t *ap_netif = esp_netif_get_handle_from_ifkey("WIFI_AP_DEF");
+    esp_netif_ip_info_t ap_ip_info;
+    char ap_ip_str[16] = "192.168.4.1";
+
+    if (ap_netif != NULL) {
+        esp_err_t ap_ip_err = esp_netif_get_ip_info(ap_netif, &ap_ip_info);
+        if (ap_ip_err == ESP_OK && ap_ip_info.ip.addr != 0) {
+            esp_ip4addr_ntoa(&ap_ip_info.ip, ap_ip_str, sizeof(ap_ip_str));
+        }
+    }
+
+    // 获取连接的WiFi信息
+    wifi_ap_record_t ap_info;
+    char connected_ssid[33] = "";
+    int8_t rssi = 0;
+
+    if (sta_connected && esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
+        strncpy(connected_ssid, (char*)ap_info.ssid, sizeof(connected_ssid) - 1);
+        connected_ssid[sizeof(connected_ssid) - 1] = '\0';
+        rssi = ap_info.rssi;
+        ESP_LOGI(TAG, "已连接WiFi: %s, 信号强度: %d dBm", connected_ssid, rssi);
+    }
+
+    // 构建响应数据
+    cJSON_AddBoolToObject(root, "success", true);
+    cJSON_AddStringToObject(root, "message", "网络信息获取成功");
+
+    // STA信息
+    cJSON *sta_info = cJSON_AddObjectToObject(root, "sta");
+    cJSON_AddBoolToObject(sta_info, "connected", sta_connected);
+    cJSON_AddStringToObject(sta_info, "ip", ip_str);
+    cJSON_AddStringToObject(sta_info, "netmask", netmask_str);
+    cJSON_AddStringToObject(sta_info, "gateway", gateway_str);
+    cJSON_AddStringToObject(sta_info, "ssid", connected_ssid);
+    cJSON_AddNumberToObject(sta_info, "rssi", rssi);
+
+    // AP信息
+    cJSON *ap_info_obj = cJSON_AddObjectToObject(root, "ap");
+    cJSON_AddStringToObject(ap_info_obj, "ip", ap_ip_str);
+    cJSON_AddStringToObject(ap_info_obj, "ssid", DEFAULT_AP_SSID);
+
+    // 主要IP地址（优先STA，其次AP）
+    cJSON_AddStringToObject(root, "ip", sta_connected ? ip_str : ap_ip_str);
+    cJSON_AddStringToObject(root, "primary_interface", sta_connected ? "sta" : "ap");
+
+    // WiFi模式信息
+    const char* mode_str = "unknown";
+    if (mode_err == ESP_OK) {
+        switch (mode) {
+            case WIFI_MODE_NULL: mode_str = "null"; break;
+            case WIFI_MODE_STA: mode_str = "sta"; break;
+            case WIFI_MODE_AP: mode_str = "ap"; break;
+            case WIFI_MODE_APSTA: mode_str = "apsta"; break;
+            default: mode_str = "unknown"; break;
+        }
+    }
+    cJSON_AddStringToObject(root, "wifi_mode", mode_str);
+
+    // 发送响应
+    char *json_str = cJSON_Print(root);
+    if (json_str == NULL) {
+        ESP_LOGE(TAG, "创建JSON字符串失败");
+        cJSON_Delete(root);
+        httpd_resp_send_500(req);
+        return ESP_FAIL;
+    }
+
+    esp_err_t ret = httpd_resp_sendstr(req, json_str);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "发送HTTP响应失败: %s", esp_err_to_name(ret));
+    }
+
+    // 清理资源
+    free(json_str);
+    cJSON_Delete(root);
+
+    // 记录最终内存状态
+    size_t final_free_heap = esp_get_free_heap_size();
+    ESP_LOGI(TAG, "网络信息处理完成 - 最终可用内存: %d 字节", final_free_heap);
+
+    return ret;
 }
 
 // WiFi连接API
@@ -765,120 +1287,120 @@ static esp_err_t ws_handler(httpd_req_t *req)
 static esp_err_t captive_portal_handler(httpd_req_t *req)
 {
     ESP_LOGI(TAG, "Captive Portal请求: %s", req->uri);
-    
+
+    // 获取User-Agent信息用于调试
+    size_t ua_len = httpd_req_get_hdr_value_len(req, "User-Agent");
+    if (ua_len > 0 && ua_len < 200) {
+        char *ua_buf = malloc(ua_len + 1);
+        if (ua_buf) {
+            if (httpd_req_get_hdr_value_str(req, "User-Agent", ua_buf, ua_len + 1) == ESP_OK) {
+                ESP_LOGI(TAG, "User-Agent: %s", ua_buf);
+            }
+            free(ua_buf);
+        }
+    }
+
     // 检查WiFi模式
     wifi_working_mode_t mode = wifi_manager_get_mode();
-    bool redirect_to_setup = false;
-    
+
     // 检查Host头部信息
     size_t host_len = httpd_req_get_hdr_value_len(req, "Host");
     if (host_len > 0) {
         char *host_buf = malloc(host_len + 1);
         if (host_buf) {
             if (httpd_req_get_hdr_value_str(req, "Host", host_buf, host_len + 1) == ESP_OK) {
-                // 如果访问的不是设备自己的IP，需要重定向
-                if (strncmp(host_buf, "192.168.4.1", 11) != 0 && 
-                    strncmp(host_buf, "esp32.local", 11) != 0) {
-                    redirect_to_setup = true;
-                }
+                ESP_LOGI(TAG, "Host头: %s", host_buf);
             }
             free(host_buf);
         }
     }
     
-    // 对于纯AP模式或来自外部域名的请求，重定向到设置页面
-    if (mode == WIFI_MANAGER_MODE_AP || redirect_to_setup) {
-        httpd_resp_set_status(req, "302 Found");
-        httpd_resp_set_hdr(req, "Location", "http://192.168.4.1/setup");
-        httpd_resp_send(req, NULL, 0);
+    // 根据不同的检测URL和模式返回适当的响应
+    // 注意：现在统一使用APSTA模式，通过STA连接状态判断是否需要配网
+
+    // 检查STA是否已连接到WiFi
+    bool sta_connected = false;
+    wifi_ap_record_t ap_info;
+    if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
+        sta_connected = true;
+        ESP_LOGI(TAG, "STA已连接到: %s", ap_info.ssid);
+    }
+
+    if (mode == WIFI_MANAGER_MODE_AP || !sta_connected) {
+        // AP模式或STA未连接 - 需要触发Captive Portal
+
+        if (strcmp(req->uri, "/generate_204") == 0) {
+            // Android/Chrome OS检测 - 返回非204状态码触发Captive Portal
+            ESP_LOGI(TAG, "Android/Chrome OS检测，重定向到配网页面");
+            httpd_resp_set_status(req, "302 Found");
+            httpd_resp_set_hdr(req, "Location", "http://192.168.4.1/setup");
+            httpd_resp_set_hdr(req, "Cache-Control", "no-cache, no-store, must-revalidate");
+            httpd_resp_send(req, NULL, 0);
+            return ESP_OK;
+        }
+        else if (strcmp(req->uri, "/hotspot-detect.html") == 0) {
+            // iOS/macOS检测 - 返回非Success内容触发Captive Portal
+            ESP_LOGI(TAG, "iOS/macOS检测，重定向到配网页面");
+            httpd_resp_set_status(req, "302 Found");
+            httpd_resp_set_hdr(req, "Location", "http://192.168.4.1/setup");
+            httpd_resp_set_hdr(req, "Cache-Control", "no-cache, no-store, must-revalidate");
+            httpd_resp_send(req, NULL, 0);
+            return ESP_OK;
+        }
+        else if (strcmp(req->uri, "/ncsi.txt") == 0 || strcmp(req->uri, "/connecttest.txt") == 0) {
+            // Windows检测 - 返回非标准内容触发Captive Portal
+            ESP_LOGI(TAG, "Windows检测，重定向到配网页面");
+            httpd_resp_set_status(req, "302 Found");
+            httpd_resp_set_hdr(req, "Location", "http://192.168.4.1/setup");
+            httpd_resp_set_hdr(req, "Cache-Control", "no-cache, no-store, must-revalidate");
+            httpd_resp_send(req, NULL, 0);
+            return ESP_OK;
+        }
+        else {
+            // 其他请求，重定向到配网页面
+            ESP_LOGI(TAG, "其他Captive Portal请求，重定向到配网页面");
+            httpd_resp_set_status(req, "302 Found");
+            httpd_resp_set_hdr(req, "Location", "http://192.168.4.1/setup");
+            httpd_resp_set_hdr(req, "Cache-Control", "no-cache, no-store, must-revalidate");
+            httpd_resp_send(req, NULL, 0);
+            return ESP_OK;
+        }
+    }
+    else {
+        // STA已连接模式下，返回正常的连接检测响应，表示网络连接正常
+        ESP_LOGI(TAG, "STA已连接，返回网络连接正常响应");
+
+        if (strcmp(req->uri, "/generate_204") == 0) {
+            // Android/Chrome OS - 返回204表示网络正常
+            httpd_resp_set_status(req, "204 No Content");
+            httpd_resp_send(req, NULL, 0);
+        }
+        else if (strcmp(req->uri, "/hotspot-detect.html") == 0) {
+            // iOS/macOS - 返回Success页面表示网络正常
+            httpd_resp_set_status(req, "200 OK");
+            httpd_resp_set_hdr(req, "Content-Type", "text/html");
+            const char* success_response =
+                "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>";
+            httpd_resp_send(req, success_response, strlen(success_response));
+        }
+        else if (strcmp(req->uri, "/ncsi.txt") == 0 || strcmp(req->uri, "/connecttest.txt") == 0) {
+            // Windows - 返回标准NCSI响应
+            httpd_resp_set_status(req, "200 OK");
+            httpd_resp_set_hdr(req, "Content-Type", "text/plain");
+            const char* windows_response = "Microsoft NCSI";
+            httpd_resp_send(req, windows_response, strlen(windows_response));
+        }
+        else {
+            // 其他检测请求
+            httpd_resp_set_status(req, "204 No Content");
+            httpd_resp_send(req, NULL, 0);
+        }
+
         return ESP_OK;
     }
-    
-    // 其他情况返回到主页
-    httpd_resp_set_status(req, "302 Found");
-    httpd_resp_set_hdr(req, "Location", "/");
-    httpd_resp_send(req, NULL, 0);
-    return ESP_OK;
 }
 
-// 获取网络信息API
-static esp_err_t network_info_handler(httpd_req_t *req)
-{
-    httpd_resp_set_type(req, "application/json");
-    
-    // 创建JSON响应
-    cJSON *root = cJSON_CreateObject();
-    
-    // 获取IP地址
-    esp_netif_ip_info_t ip_info;
-    char ip_str[16] = "unknown";
-    char netmask_str[16] = "255.255.255.0";
-    bool ip_found = false;
 
-    // 尝试获取STA模式的IP地址（如果已连接到WiFi）
-    esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
-    if (netif != NULL && esp_netif_get_ip_info(netif, &ip_info) == ESP_OK) {
-        // 检查IP是否有效（不是0.0.0.0）
-        if (ip_info.ip.addr != 0) {
-            sprintf(ip_str, IPSTR, IP2STR(&ip_info.ip));
-            sprintf(netmask_str, IPSTR, IP2STR(&ip_info.netmask));
-            cJSON_AddStringToObject(root, "mode", "sta");
-            ip_found = true;
-        }
-    }
-
-    // 如果STA模式未连接，尝试AP模式的IP
-    if (!ip_found) {
-        netif = esp_netif_get_handle_from_ifkey("WIFI_AP_DEF");
-        if (netif != NULL && esp_netif_get_ip_info(netif, &ip_info) == ESP_OK) {
-            sprintf(ip_str, IPSTR, IP2STR(&ip_info.ip));
-            sprintf(netmask_str, IPSTR, IP2STR(&ip_info.netmask));
-            cJSON_AddStringToObject(root, "mode", "ap");
-            ip_found = true;
-        }
-    }
-    
-    // 获取MAC地址
-    uint8_t mac[6];
-    char mac_str[18] = "";
-    if (esp_wifi_get_mac(WIFI_IF_STA, mac) == ESP_OK) {
-        sprintf(mac_str, "%02X:%02X:%02X:%02X:%02X:%02X", 
-                mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-    }
-    
-    // 获取当前WiFi模式
-    wifi_working_mode_t current_mode = wifi_manager_get_mode();
-    
-    // 获取RSSI（如果在STA模式下）
-    int8_t rssi = 0;
-    wifi_ap_record_t ap_info;
-    bool rssi_available = false;
-    
-    if (current_mode == WIFI_MANAGER_MODE_STA && 
-        esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
-        rssi = ap_info.rssi;
-        rssi_available = true;
-    }
-    
-    // 添加信息到JSON对象
-    cJSON_AddStringToObject(root, "ip", ip_str);
-    cJSON_AddStringToObject(root, "netmask", netmask_str);
-    cJSON_AddStringToObject(root, "mac", mac_str);
-    
-    if (rssi_available) {
-        cJSON_AddNumberToObject(root, "rssi", rssi);
-    }
-    
-    // 发送JSON响应
-    char *json_str = cJSON_Print(root);
-    httpd_resp_sendstr(req, json_str);
-    
-    // 释放内存
-    free(json_str);
-    cJSON_Delete(root);
-    
-    return ESP_OK;
-}
 
 // 从NVS中保存用户名和密码
 static esp_err_t save_auth_credentials(const char *username, const char *password)
@@ -1038,10 +1560,30 @@ static esp_err_t auth_post_handler(httpd_req_t *req)
     
     // 验证凭据
     bool auth_success = (strcmp(username, saved_username) == 0 && strcmp(password, saved_password) == 0);
-    
+
     // 构建响应JSON
     cJSON *resp = cJSON_CreateObject();
     cJSON_AddBoolToObject(resp, "success", auth_success);
+
+    if (auth_success) {
+        // 认证成功，创建新session
+        create_new_session();
+        cJSON_AddStringToObject(resp, "session_token", current_session_token);
+        cJSON_AddStringToObject(resp, "message", "登录成功");
+
+        // 设置Cookie
+        char cookie_header[128];
+        snprintf(cookie_header, sizeof(cookie_header),
+                "session_token=%s; Path=/; HttpOnly; Max-Age=%d",
+                current_session_token, SESSION_TIMEOUT_SECONDS);
+        httpd_resp_set_hdr(req, "Set-Cookie", cookie_header);
+
+        ESP_LOGI(TAG, "用户 %s 登录成功", username);
+    } else {
+        cJSON_AddStringToObject(resp, "message", "用户名或密码错误");
+        ESP_LOGW(TAG, "用户 %s 登录失败", username);
+    }
+
     char *json_resp = cJSON_Print(resp);
     
     httpd_resp_set_type(req, "application/json");
@@ -1051,6 +1593,33 @@ static esp_err_t auth_post_handler(httpd_req_t *req)
     cJSON_Delete(resp);
     cJSON_Delete(root);
     
+    return ESP_OK;
+}
+
+// 登出API处理函数
+static esp_err_t logout_handler(httpd_req_t *req)
+{
+    // 清除当前session
+    memset(current_session_token, 0, sizeof(current_session_token));
+    session_created_time = 0;
+
+    // 清除Cookie
+    httpd_resp_set_hdr(req, "Set-Cookie", "session_token=; Path=/; HttpOnly; Max-Age=0");
+
+    // 构建响应JSON
+    cJSON *resp = cJSON_CreateObject();
+    cJSON_AddBoolToObject(resp, "success", true);
+    cJSON_AddStringToObject(resp, "message", "已成功登出");
+
+    char *json_resp = cJSON_Print(resp);
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, json_resp);
+
+    free(json_resp);
+    cJSON_Delete(resp);
+
+    ESP_LOGI(TAG, "用户已登出");
     return ESP_OK;
 }
 
@@ -1219,6 +1788,14 @@ static void register_handlers(httpd_handle_t server)
         .user_ctx  = NULL
     };
     httpd_register_uri_handler(server, &setup);
+
+    httpd_uri_t login = {
+        .uri       = "/login",
+        .method    = HTTP_GET,
+        .handler   = login_get_handler,
+        .user_ctx  = NULL
+    };
+    httpd_register_uri_handler(server, &login);
     
     httpd_uri_t status = {
         .uri       = "/api/status",
@@ -1315,7 +1892,16 @@ static void register_handlers(httpd_handle_t server)
         .user_ctx  = NULL
     };
     httpd_register_uri_handler(server, &auth_post_uri);
-    
+
+    // 添加登出API
+    httpd_uri_t logout_post_uri = {
+        .uri       = "/api/logout",
+        .method    = HTTP_POST,
+        .handler   = logout_handler,
+        .user_ctx  = NULL
+    };
+    httpd_register_uri_handler(server, &logout_post_uri);
+
     // 添加设置认证凭据API
     httpd_uri_t update_auth_post_uri = {
         .uri       = "/api/set_auth",

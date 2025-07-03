@@ -286,84 +286,7 @@
       color: white;
     }
 
-    /* 登录表单样式 */
-    .login-container {
-      max-width: 400px;
-      margin: 50px auto;
-      background: var(--card-bg);
-      border-radius: var(--border-radius);
-      box-shadow: var(--box-shadow);
-      padding: 30px;
-    }
-    
-    .login-header {
-      text-align: center;
-      margin-bottom: 25px;
-    }
-    
-    .login-form {
-      display: flex;
-      flex-direction: column;
-      gap: 20px;
-    }
-    
-    .form-group {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    
-    .form-group label {
-      font-weight: 500;
-      color: var(--text-dark);
-    }
-    
-    .form-group input {
-      padding: 12px 15px;
-      border-radius: 8px;
-      border: 1px solid #ced4da;
-      font-size: 16px;
-      transition: border-color 0.3s ease;
-    }
-    
-    .form-group input:focus {
-      border-color: var(--primary-color);
-      outline: none;
-      box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.2);
-    }
-    
-    .login-btn {
-      background-color: var(--primary-color);
-      color: white;
-      border: none;
-      padding: 12px 20px;
-      font-size: 16px;
-      font-weight: 500;
-      border-radius: 8px;
-      cursor: pointer;
-      transition: var(--transition);
-      margin-top: 10px;
-    }
-    
-    .login-btn:hover {
-      background-color: var(--secondary-color);
-      transform: translateY(-2px);
-    }
-    
-    .login-btn:active {
-      transform: translateY(0);
-    }
-    
-    .login-error {
-      background-color: rgba(247, 37, 133, 0.1);
-      color: var(--danger-color);
-      padding: 10px;
-      border-radius: 5px;
-      font-size: 14px;
-      text-align: center;
-      margin-top: 15px;
-      display: none;
-    }
+
 
     @keyframes spin {
       to { transform: rotate(360deg); }
@@ -380,31 +303,7 @@
       }
     }
 
-    /* 当登录时隐藏主页内容，显示登录表单 */
-    .main-content {
-      display: none;
-    }
 
-    /* 登录后显示主页内容，隐藏登录表单 */
-    .login-section {
-      display: none;
-    }
-
-    body.authenticated .main-content {
-      display: block;
-    }
-
-    body.authenticated .login-section {
-      display: none;
-    }
-
-    body:not(.authenticated) .main-content {
-      display: none;
-    }
-
-    body:not(.authenticated) .login-section {
-      display: block;
-    }
   </style>
 </head>
 <body>
@@ -414,34 +313,23 @@
 
   <div class="toast" id="toast"></div>
 
-  <!-- 登录部分 -->
-  <div class="login-section">
-    <div class="login-container">
-      <div class="login-header">
-        <h1>远程开机助手</h1>
-        <p class="subtitle">请登录以继续</p>
-      </div>
-      <form class="login-form" id="login-form">
-        <div class="form-group">
-          <label for="username">用户名</label>
-          <input type="text" id="username" name="username" required>
-        </div>
-        <div class="form-group">
-          <label for="password">密码</label>
-          <input type="password" id="password" name="password" required>
-        </div>
-        <button type="submit" class="login-btn">登录</button>
-        <div class="login-error" id="login-error"></div>
-      </form>
-    </div>
-  </div>
-
   <!-- 主页内容部分 -->
-  <div class="main-content">
-    <div class="container">
+  <div class="container">
       <header>
-        <h1>远程开机助手</h1>
-        <p class="subtitle">控制您的电脑电源</p>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+          <div>
+            <h1>远程开机助手</h1>
+            <p class="subtitle">控制您的电脑电源</p>
+          </div>
+          <button class="settings-btn" onclick="logout()" title="登出">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+              <polyline points="16,17 21,12 16,7"></polyline>
+              <line x1="21" y1="12" x2="9" y2="12"></line>
+            </svg>
+            登出
+          </button>
+        </div>
       </header>
       
       <div class="card status-card">
@@ -490,96 +378,19 @@
       const settingsBtn = document.getElementById('settings-btn');
       const loadingOverlay = document.querySelector('.loading-overlay');
       const toast = document.getElementById('toast');
-      const loginForm = document.getElementById('login-form');
-      const loginError = document.getElementById('login-error');
-      
-      // 检查认证状态
-      function checkAuthStatus() {
-        // 尝试从本地存储获取认证状态
-        const isAuthenticated = localStorage.getItem('authenticated') === 'true';
-        
-        if (isAuthenticated) {
-          document.body.classList.add('authenticated');
-          initMainPage();
-        } else {
-          document.body.classList.remove('authenticated');
-        }
-      }
-      
+
       // 初始化主页功能
       function initMainPage() {
         // 获取PC状态并更新UI
         fetchPCStatus();
-        
+
         // 启动WebSocket连接
         setupWebSocket();
+
+        // 设置静默定时刷新状态（每10秒刷新一次作为备用，无加载动画）
+        setInterval(fetchPCStatusSilent, 10000);
       }
-      
-      // 处理登录表单提交
-      loginForm.addEventListener('submit', function(e) {
-        e.preventDefault();
-        
-        const username = document.getElementById('username').value.trim();
-        const password = document.getElementById('password').value.trim();
-        
-        if (!username || !password) {
-          showLoginError('请输入用户名和密码');
-          return;
-        }
-        
-        showLoading(true);
-        
-        // 发送认证请求
-        fetch('/api/auth', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            username: username,
-            password: password
-          })
-        })
-        .then(response => response.json())
-        .then(data => {
-          showLoading(false);
-          
-          if (data.success) {
-            // 认证成功，保存状态并刷新页面
-            localStorage.setItem('authenticated', 'true');
-            document.body.classList.add('authenticated');
-            loginForm.reset();
-            hideLoginError();
-            initMainPage();
-          } else {
-            // 认证失败
-            showLoginError('用户名或密码错误');
-            localStorage.removeItem('authenticated');
-          }
-        })
-        .catch(error => {
-          showLoading(false);
-          showLoginError('登录请求失败，请重试');
-          console.error('认证错误:', error);
-        });
-      });
-      
-      // 显示登录错误
-      function showLoginError(message) {
-        loginError.textContent = message;
-        loginError.style.display = 'block';
-      }
-      
-      // 隐藏登录错误
-      function hideLoginError() {
-        loginError.style.display = 'none';
-      }
-      
-      // 退出登录
-      function logout() {
-        localStorage.removeItem('authenticated');
-        document.body.classList.remove('authenticated');
-      }
+
       
       // 设置WebSocket连接
       function setupWebSocket() {
@@ -616,10 +427,10 @@
         };
       }
       
-      // 通过API获取PC状态
+      // 通过API获取PC状态（带加载动画，用于初始加载）
       function fetchPCStatus() {
         showLoading(true);
-        
+
         fetch('/api/status')
           .then(response => response.json())
           .then(data => {
@@ -630,6 +441,21 @@
             showLoading(false);
             showToast('获取PC状态失败，请刷新重试', 'error');
             console.error('获取状态错误:', error);
+          });
+      }
+
+      // 静默获取PC状态（无加载动画，用于定时刷新）
+      function fetchPCStatusSilent() {
+        fetch('/api/status')
+          .then(response => response.json())
+          .then(data => {
+            // 静默更新状态，不显示任何提示
+            updatePCStatus(data.is_on);
+            console.log('静默状态同步完成:', data.is_on ? '开机' : '关机');
+          })
+          .catch(error => {
+            // 静默处理错误，只在控制台记录
+            console.warn('静默状态同步失败:', error);
           });
       }
       
@@ -667,10 +493,17 @@
       // 处理开机按钮点击
       powerBtn.addEventListener('click', function() {
         if (this.disabled) return;
-        
+
+        // 立即显示反馈
         this.disabled = true;
-        showLoading(true);
-        
+        this.innerHTML = `
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
+            <line x1="12" y1="2" x2="12" y2="12"></line>
+          </svg>
+          发送中...`;
+        showToast('正在发送开机指令...', 'info');
+
         fetch('/api/power', {
           method: 'POST',
           headers: {
@@ -679,19 +512,31 @@
         })
         .then(response => response.json())
         .then(data => {
-          showLoading(false);
-          
           if (data.success) {
-            showToast('开机指令已发送', 'success');
+            showToast('开机指令已发送！请等待电脑启动...', 'success');
+            // 按钮保持禁用状态，等待WebSocket状态更新
           } else {
             showToast(data.message || '开机失败', 'error');
+            // 恢复按钮状态
             this.disabled = false;
+            this.innerHTML = `
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
+                <line x1="12" y1="2" x2="12" y2="12"></line>
+              </svg>
+              开机`;
           }
         })
         .catch(error => {
-          showLoading(false);
-          showToast('请求失败，请重试', 'error');
+          showToast('网络请求失败，请重试', 'error');
+          // 恢复按钮状态
           this.disabled = false;
+          this.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
+              <line x1="12" y1="2" x2="12" y2="12"></line>
+            </svg>
+            开机`;
           console.error('开机错误:', error);
         });
       });
@@ -726,9 +571,46 @@
         }, 3000);
       }
       
-      // 初始检查认证状态
-      checkAuthStatus();
+      // 直接初始化主页功能
+      initMainPage();
     });
+
+    // 登出功能
+    async function logout() {
+      if (!confirm('确定要登出吗？')) {
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/logout', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          // 清除本地存储的认证信息
+          localStorage.removeItem('session_token');
+          localStorage.removeItem('isAuthenticated');
+
+          // 显示成功消息
+          showToast('已成功登出', 'success');
+
+          // 延迟跳转到登录页面
+          setTimeout(() => {
+            window.location.href = '/login';
+          }, 1000);
+        } else {
+          showToast('登出失败，请重试', 'error');
+        }
+      } catch (error) {
+        console.error('登出请求失败:', error);
+        showToast('网络连接错误', 'error');
+      }
+    }
   </script>
 </body>
-</html> 
+</html>

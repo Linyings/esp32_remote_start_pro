@@ -298,8 +298,8 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
 
 void wifi_manager_init(void)
 {
-    ESP_LOGI(TAG, "初始化WiFi管理器");
-    
+    ESP_LOGI(TAG, "初始化WiFi管理器 - 统一APSTA模式");
+
     // 创建WiFi事件组
     if (s_wifi_event_group == NULL) {
         s_wifi_event_group = xEventGroupCreate();
@@ -308,11 +308,11 @@ void wifi_manager_init(void)
             return;
         }
     }
-    
+
     // 创建默认netif实例
     s_sta_netif = esp_netif_create_default_wifi_sta();
     s_ap_netif = esp_netif_create_default_wifi_ap();
-    
+
     // 初始化WiFi
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     esp_err_t err = esp_wifi_init(&cfg);
@@ -320,7 +320,7 @@ void wifi_manager_init(void)
         ESP_LOGE(TAG, "WiFi初始化失败: %s", esp_err_to_name(err));
         return;
     }
-    
+
     // 注册事件处理函数
     ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
                                                         ESP_EVENT_ANY_ID,
@@ -332,69 +332,70 @@ void wifi_manager_init(void)
                                                         &wifi_event_handler,
                                                         NULL,
                                                         NULL));
-    
+
     // 尝试加载WiFi凭证
     char ssid[MAX_SSID_LEN] = {0};
     char password[MAX_PASSWORD_LEN] = {0};
     bool has_credentials = false;
-    
+
     if (wifi_manager_load_credentials(ssid, password) == ESP_OK && strlen(ssid) > 0) {
         has_credentials = true;
         ESP_LOGI(TAG, "找到保存的WiFi凭证，将尝试连接到 %s", ssid);
+    } else {
+        ESP_LOGI(TAG, "未找到保存的WiFi凭证");
     }
-    
-    // 优化连接流程：根据是否有保存的凭证决定启动模式
+
+    // 统一使用APSTA模式启动
+    ESP_LOGI(TAG, "统一使用APSTA模式启动，AP始终可用");
+
+    // 配置AP
+    wifi_config_t ap_config = {
+        .ap = {
+            .ssid = DEFAULT_AP_SSID,
+            .ssid_len = strlen(DEFAULT_AP_SSID),
+            .channel = DEFAULT_AP_CHANNEL,
+            .password = DEFAULT_AP_PASSWORD,
+            .max_connection = DEFAULT_AP_MAX_CONNECTIONS,
+            .authmode = strlen(DEFAULT_AP_PASSWORD) > 0 ? WIFI_AUTH_WPA_WPA2_PSK : WIFI_AUTH_OPEN
+        },
+    };
+
+    // 配置STA（如果有保存的凭证）
+    wifi_config_t sta_config = {0};
     if (has_credentials) {
-        // 有保存的凭证，直接使用APSTA模式
-        ESP_LOGI(TAG, "使用APSTA模式启动，同时开启AP和尝试连接到已保存的WiFi");
-        
-        // 配置AP
-        wifi_config_t ap_config = {
-            .ap = {
-                .ssid = DEFAULT_AP_SSID,
-                .ssid_len = strlen(DEFAULT_AP_SSID),
-                .channel = DEFAULT_AP_CHANNEL,
-                .password = DEFAULT_AP_PASSWORD,
-                .max_connection = DEFAULT_AP_MAX_CONNECTIONS,
-                .authmode = strlen(DEFAULT_AP_PASSWORD) > 0 ? WIFI_AUTH_WPA_WPA2_PSK : WIFI_AUTH_OPEN
-            },
-        };
-        
-        // 配置STA
-        wifi_config_t sta_config = {0};
         strlcpy((char *)sta_config.sta.ssid, ssid, sizeof(sta_config.sta.ssid));
         strlcpy((char *)sta_config.sta.password, password, sizeof(sta_config.sta.password));
-        
-        // 设置为APSTA模式
-        ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
-        ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap_config));
-        ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &sta_config));
-        ESP_ERROR_CHECK(esp_wifi_start());
-        
-        // 启动DNS服务器，实现Captive Portal功能
-        start_dns_server();
-        
-        // 尝试连接到保存的WiFi
-        ESP_LOGI(TAG, "WiFi已启动，尝试连接到 %s", ssid);
-        esp_wifi_connect();
-        
-        // 设置工作模式为STA（虽然实际是APSTA）
-        s_current_mode = WIFI_MANAGER_MODE_STA;
+        ESP_LOGI(TAG, "配置STA连接到: %s", ssid);
     } else {
-        // 无保存的凭证，使用纯AP模式
-        ESP_LOGI(TAG, "未找到WiFi凭证，使用纯AP模式启动");
-        err = wifi_manager_start_ap();
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "启动AP模式失败: %s", esp_err_to_name(err));
-        }
+        ESP_LOGI(TAG, "无保存凭证，STA配置为空");
     }
-    
-    ESP_LOGI(TAG, "WiFi管理器初始化完成");
+
+    // 设置为APSTA模式
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap_config));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &sta_config));
+    ESP_ERROR_CHECK(esp_wifi_start());
+
+    // 启动DNS服务器，实现Captive Portal功能
+    start_dns_server();
+
+    // 如果有保存的凭证，尝试连接
+    if (has_credentials) {
+        ESP_LOGI(TAG, "尝试连接到保存的WiFi: %s", ssid);
+        esp_wifi_connect();
+        s_current_mode = WIFI_MANAGER_MODE_STA; // 标记为STA模式（实际是APSTA）
+    } else {
+        s_current_mode = WIFI_MANAGER_MODE_AP; // 标记为AP模式（实际是APSTA）
+    }
+
+    ESP_LOGI(TAG, "WiFi管理器初始化完成 - APSTA模式运行，AP: %s", DEFAULT_AP_SSID);
 }
 
 esp_err_t wifi_manager_start_ap(void)
 {
-    wifi_config_t wifi_config = {
+    ESP_LOGI(TAG, "启动APSTA模式（AP功能）");
+
+    wifi_config_t ap_config = {
         .ap = {
             .ssid = DEFAULT_AP_SSID,
             .ssid_len = strlen(DEFAULT_AP_SSID),
@@ -404,21 +405,26 @@ esp_err_t wifi_manager_start_ap(void)
             .authmode = WIFI_AUTH_WPA_WPA2_PSK
         },
     };
-    
+
     if (strlen(DEFAULT_AP_PASSWORD) == 0) {
-        wifi_config.ap.authmode = WIFI_AUTH_OPEN;
+        ap_config.ap.authmode = WIFI_AUTH_OPEN;
     }
-    
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config));
+
+    // 清空STA配置
+    wifi_config_t sta_config = {0};
+
+    // 设置为APSTA模式
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap_config));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &sta_config));
     ESP_ERROR_CHECK(esp_wifi_start());
-    
+
     s_current_mode = WIFI_MANAGER_MODE_AP;
-    ESP_LOGI(TAG, "WiFi AP模式启动，SSID: %s, 密码: %s", DEFAULT_AP_SSID, DEFAULT_AP_PASSWORD);
-    
-    // 启动DNS服务器，实现Captive Portal（强制门户）功能
+    ESP_LOGI(TAG, "APSTA模式启动，AP: %s, 密码: %s", DEFAULT_AP_SSID, DEFAULT_AP_PASSWORD);
+
+    // 启动DNS服务器，实现Captive Portal功能
     start_dns_server();
-    
+
     return ESP_OK;
 }
 
@@ -427,23 +433,22 @@ esp_err_t wifi_manager_start_sta(const char *ssid, const char *password)
     if (ssid == NULL || strlen(ssid) == 0) {
         return ESP_ERR_INVALID_ARG;
     }
-    
-    wifi_config_t wifi_config = {0};
-    strlcpy((char *)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid));
-    
+
+    ESP_LOGI(TAG, "连接到WiFi: %s (保持APSTA模式)", ssid);
+
+    wifi_config_t sta_config = {0};
+    strlcpy((char *)sta_config.sta.ssid, ssid, sizeof(sta_config.sta.ssid));
+
     if (password != NULL) {
-        strlcpy((char *)wifi_config.sta.password, password, sizeof(wifi_config.sta.password));
+        strlcpy((char *)sta_config.sta.password, password, sizeof(sta_config.sta.password));
     }
-    
+
     s_retry_num = 0;
-    
+
     // 检查WiFi是否已初始化
     esp_err_t err;
     wifi_mode_t mode;
-    
-    // 记录当前状态
-    ESP_LOGI(TAG, "尝试连接到WiFi: %s", ssid);
-    
+
     // 先检查WiFi状态
     err = esp_wifi_get_mode(&mode);
     if (err != ESP_OK) {
@@ -460,21 +465,24 @@ esp_err_t wifi_manager_start_sta(const char *ssid, const char *password)
             return err;
         }
     }
-    
-    // 设置APSTA模式
-    err = esp_wifi_set_mode(WIFI_MODE_APSTA);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "设置WiFi模式失败: %s", esp_err_to_name(err));
-        return err;
+
+    // 确保为APSTA模式
+    if (mode != WIFI_MODE_APSTA) {
+        ESP_LOGI(TAG, "当前模式不是APSTA，切换到APSTA模式");
+        err = esp_wifi_set_mode(WIFI_MODE_APSTA);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "设置APSTA模式失败: %s", esp_err_to_name(err));
+            return err;
+        }
     }
-    
+
     // 设置STA配置
-    err = esp_wifi_set_config(WIFI_IF_STA, &wifi_config);
+    err = esp_wifi_set_config(WIFI_IF_STA, &sta_config);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "设置STA配置失败: %s", esp_err_to_name(err));
         return err;
     }
-    
+
     // 确保WiFi已启动
     bool wifi_started = false;
     err = esp_wifi_get_mode(&mode);
@@ -484,54 +492,56 @@ esp_err_t wifi_manager_start_sta(const char *ssid, const char *password)
             uint8_t mac[6];
             if (esp_wifi_get_mac(WIFI_IF_STA, mac) == ESP_OK) {
                 wifi_started = true;
-                ESP_LOGI(TAG, "WiFi已启动，MAC: %02x:%02x:%02x:%02x:%02x:%02x", 
+                ESP_LOGI(TAG, "WiFi已启动，STA MAC: %02x:%02x:%02x:%02x:%02x:%02x",
                          mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
             }
         }
     }
-    
+
     // 如果WiFi尚未启动，则启动它
     if (!wifi_started) {
-        ESP_LOGI(TAG, "启动WiFi...");
+        ESP_LOGI(TAG, "启动APSTA模式WiFi...");
         err = esp_wifi_start();
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "启动WiFi失败: %s", esp_err_to_name(err));
             return err;
         }
-        
+
+        // 启动DNS服务器（如果尚未启动）
+        if (s_dns_server_task_handle == NULL) {
+            start_dns_server();
+        }
+
         // 添加短暂延迟，确保WiFi完全启动
-        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(500));
     }
-    
+
     // 尝试连接到AP
+    ESP_LOGI(TAG, "尝试连接到WiFi: %s", ssid);
     err = esp_wifi_connect();
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "WiFi连接失败: %s", esp_err_to_name(err));
         return err;
     }
-    
-    s_current_mode = WIFI_MANAGER_MODE_STA; // 仍然将模式标记为STA，尽管实际上是APSTA
-    ESP_LOGI(TAG, "WiFi APSTA模式启动，连接到SSID: %s", ssid);
-    
+
+    s_current_mode = WIFI_MANAGER_MODE_STA; // 标记为STA模式（实际运行APSTA）
+    ESP_LOGI(TAG, "APSTA模式运行，尝试连接到: %s", ssid);
+
     // 等待连接结果（带超时）
     EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
                                           WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
                                           pdFALSE,
                                           pdFALSE,
-                                          pdMS_TO_TICKS(10000));
-    
+                                          pdMS_TO_TICKS(15000)); // 增加超时时间
+
     if (bits & WIFI_CONNECTED_BIT) {
-        ESP_LOGI(TAG, "成功连接到SSID: %s", ssid);
-        // 即使连接成功，也保持DNS服务器运行，以支持设备在任何情况下都能通过AP访问
-        if (s_dns_server_task_handle == NULL) {
-            start_dns_server();
-        }
+        ESP_LOGI(TAG, "成功连接到WiFi: %s (AP仍然可用)", ssid);
         return ESP_OK;
     } else if (bits & WIFI_FAIL_BIT) {
-        ESP_LOGI(TAG, "连接到SSID: %s 失败", ssid);
+        ESP_LOGI(TAG, "连接到WiFi: %s 失败 (AP仍然可用)", ssid);
         return ESP_FAIL;
     } else {
-        ESP_LOGI(TAG, "连接超时");
+        ESP_LOGI(TAG, "连接超时 (AP仍然可用)");
         return ESP_ERR_TIMEOUT;
     }
 }
@@ -774,74 +784,53 @@ wifi_ap_record_t *wifi_manager_scan_networks(uint16_t *ap_count)
 
     *ap_count = 0;
 
+    // 打印当前WiFi状态
+    wifi_manager_print_status();
+
     // 确保WiFi已初始化
     wifi_mode_t current_mode;
-    if (esp_wifi_get_mode(&current_mode) != ESP_OK) {
-        ESP_LOGE(TAG, "WiFi未初始化");
+    esp_err_t mode_err = esp_wifi_get_mode(&current_mode);
+    if (mode_err != ESP_OK) {
+        ESP_LOGE(TAG, "WiFi未初始化或获取模式失败: %s", esp_err_to_name(mode_err));
         return NULL;
     }
 
-    ESP_LOGI(TAG, "开始WiFi扫描，当前模式: %d", current_mode);
+    ESP_LOGI(TAG, "开始WiFi扫描，当前模式: %s (%d)",
+             current_mode == WIFI_MODE_NULL ? "NULL" :
+             current_mode == WIFI_MODE_STA ? "STA" :
+             current_mode == WIFI_MODE_AP ? "AP" :
+             current_mode == WIFI_MODE_APSTA ? "APSTA" : "未知", current_mode);
 
-    // 如果当前是AP模式，需要切换到APSTA模式才能扫描
-    bool mode_changed = false;
-    if (current_mode == WIFI_MODE_AP) {
-        ESP_LOGI(TAG, "切换到APSTA模式以支持扫描");
-
-        // 先停止WiFi
-        esp_wifi_stop();
-        vTaskDelay(pdMS_TO_TICKS(100));
-
-        // 切换模式
-        esp_err_t mode_result = esp_wifi_set_mode(WIFI_MODE_APSTA);
-        if (mode_result != ESP_OK) {
-            ESP_LOGE(TAG, "切换到APSTA模式失败: %s", esp_err_to_name(mode_result));
-            // 尝试重新启动AP模式
-            esp_wifi_set_mode(WIFI_MODE_AP);
-            esp_wifi_start();
-            return NULL;
-        }
-
-        // 重新启动WiFi
-        esp_err_t start_result = esp_wifi_start();
-        if (start_result != ESP_OK) {
-            ESP_LOGE(TAG, "重新启动WiFi失败: %s", esp_err_to_name(start_result));
-            return NULL;
-        }
-
-        mode_changed = true;
-        vTaskDelay(pdMS_TO_TICKS(2000)); // 增加等待时间，确保模式切换和启动完成
+    // 统一APSTA模式下，无需模式切换，直接扫描
+    if (current_mode != WIFI_MODE_APSTA && current_mode != WIFI_MODE_STA) {
+        ESP_LOGE(TAG, "当前模式不支持扫描: %d", current_mode);
+        return NULL;
     }
 
+    ESP_LOGI(TAG, "APSTA模式下直接扫描，无需切换模式");
+
     // 停止任何正在进行的扫描
+    ESP_LOGI(TAG, "停止之前的扫描...");
     esp_wifi_scan_stop();
     vTaskDelay(pdMS_TO_TICKS(300));
-    
-    // 配置扫描参数 - 使用更保守的设置
+
+    // 配置扫描参数
     wifi_scan_config_t scan_config = {
         .ssid = NULL,
         .bssid = NULL,
         .channel = 0,  // 扫描所有信道
         .show_hidden = false,  // 不显示隐藏网络
         .scan_type = WIFI_SCAN_TYPE_ACTIVE,
-        .scan_time.active.min = 100,   // 使用更保守的时间
-        .scan_time.active.max = 300,   // 使用更保守的时间
+        .scan_time.active.min = 100,   // 优化扫描时间
+        .scan_time.active.max = 300,   // 优化扫描时间
     };
 
     // 开始扫描（阻塞模式）
-    ESP_LOGI(TAG, "开始WiFi扫描...");
+    ESP_LOGI(TAG, "开始WiFi扫描（阻塞模式）...");
     esp_err_t scan_result = esp_wifi_scan_start(&scan_config, true);
 
     if (scan_result != ESP_OK) {
         ESP_LOGE(TAG, "WiFi扫描失败: %s", esp_err_to_name(scan_result));
-
-        // 恢复原始模式
-        if (mode_changed) {
-            ESP_LOGI(TAG, "恢复为AP模式");
-            esp_wifi_stop();
-            esp_wifi_set_mode(WIFI_MODE_AP);
-            esp_wifi_start();
-        }
 
         // 尝试简化扫描作为备用方案
         ESP_LOGW(TAG, "尝试简化扫描作为备用方案");
@@ -849,15 +838,11 @@ wifi_ap_record_t *wifi_manager_scan_networks(uint16_t *ap_count)
     }
     
     ESP_LOGI(TAG, "WiFi扫描完成，获取结果...");
-    
+
     // 获取扫描到的AP数量
     esp_err_t get_num_result = esp_wifi_scan_get_ap_num(ap_count);
     if (get_num_result != ESP_OK) {
         ESP_LOGE(TAG, "获取AP数量失败: %s", esp_err_to_name(get_num_result));
-        // 恢复原始模式
-        if (mode_changed) {
-            esp_wifi_set_mode(WIFI_MODE_AP);
-        }
         *ap_count = 0;
         return NULL;
     }
@@ -866,9 +851,11 @@ wifi_ap_record_t *wifi_manager_scan_networks(uint16_t *ap_count)
 
     if (*ap_count == 0) {
         ESP_LOGW(TAG, "未找到任何WiFi网络");
-        // 恢复原始模式
-        if (mode_changed) {
-            esp_wifi_set_mode(WIFI_MODE_AP);
+        // 返回空数组而不是NULL，让上层知道扫描成功但没有结果
+        wifi_ap_record_t *empty_records = (wifi_ap_record_t *)malloc(sizeof(wifi_ap_record_t));
+        if (empty_records != NULL) {
+            *ap_count = 0;
+            return empty_records;
         }
         return NULL;
     }
@@ -876,27 +863,23 @@ wifi_ap_record_t *wifi_manager_scan_networks(uint16_t *ap_count)
     // 分配内存存储扫描结果
     wifi_ap_record_t *ap_records = (wifi_ap_record_t *)malloc(*ap_count * sizeof(wifi_ap_record_t));
     if (ap_records == NULL) {
-        ESP_LOGE(TAG, "内存分配失败");
-        // 恢复原始模式
-        if (mode_changed) {
-            esp_wifi_set_mode(WIFI_MODE_AP);
-        }
+        ESP_LOGE(TAG, "内存分配失败，需要 %d 字节", *ap_count * sizeof(wifi_ap_record_t));
         *ap_count = 0;
         return NULL;
     }
 
     // 获取扫描结果
-    esp_err_t get_ap_result = esp_wifi_scan_get_ap_records(ap_count, ap_records);
+    uint16_t actual_count = *ap_count;
+    esp_err_t get_ap_result = esp_wifi_scan_get_ap_records(&actual_count, ap_records);
     if (get_ap_result != ESP_OK) {
         ESP_LOGE(TAG, "获取AP记录失败: %s", esp_err_to_name(get_ap_result));
         free(ap_records);
-        // 恢复原始模式
-        if (mode_changed) {
-            esp_wifi_set_mode(WIFI_MODE_AP);
-        }
         *ap_count = 0;
         return NULL;
     }
+
+    *ap_count = actual_count;
+    ESP_LOGI(TAG, "成功获取 %d 个AP记录", *ap_count);
 
     ESP_LOGI(TAG, "原始扫描结果: %d 个网络", *ap_count);
 
@@ -915,8 +898,11 @@ wifi_ap_record_t *wifi_manager_scan_networks(uint16_t *ap_count)
     if (*ap_count == 0) {
         ESP_LOGW(TAG, "过滤后没有可用的WiFi网络");
         free(ap_records);
-        if (mode_changed) {
-            esp_wifi_set_mode(WIFI_MODE_AP);
+        // 返回空数组而不是NULL
+        wifi_ap_record_t *empty_records = (wifi_ap_record_t *)malloc(sizeof(wifi_ap_record_t));
+        if (empty_records != NULL) {
+            *ap_count = 0;
+            return empty_records;
         }
         return NULL;
     }
@@ -943,9 +929,6 @@ wifi_ap_record_t *wifi_manager_scan_networks(uint16_t *ap_count)
     if (final_records == NULL) {
         ESP_LOGE(TAG, "重新分配内存失败");
         free(ap_records);
-        if (mode_changed) {
-            esp_wifi_set_mode(WIFI_MODE_AP);
-        }
         *ap_count = 0;
         return NULL;
     }
@@ -953,15 +936,8 @@ wifi_ap_record_t *wifi_manager_scan_networks(uint16_t *ap_count)
     memcpy(final_records, ap_records, *ap_count * sizeof(wifi_ap_record_t));
     free(ap_records);
 
-    // 恢复原始模式
-    if (mode_changed) {
-        ESP_LOGI(TAG, "恢复为AP模式");
-        esp_wifi_stop();
-        vTaskDelay(pdMS_TO_TICKS(100));
-        esp_wifi_set_mode(WIFI_MODE_AP);
-        esp_wifi_start();
-        vTaskDelay(pdMS_TO_TICKS(500)); // 等待AP模式重新启动
-    }
+    // APSTA模式下无需恢复模式，保持当前状态
+    ESP_LOGI(TAG, "WiFi扫描完成，保持APSTA模式");
 
     // 打印扫描结果
     ESP_LOGI(TAG, "WiFi扫描成功完成，返回 %d 个网络:", *ap_count);

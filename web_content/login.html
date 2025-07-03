@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>远程开机助手 - 登录</title>
+  <style>
+    :root {
+      --primary: #667eea;
+      --primary-dark: #5a6fd8;
+      --success: #48bb78;
+      --danger: #f56565;
+      --warning: #ed8936;
+      --gray-50: #f9fafb;
+      --gray-100: #f3f4f6;
+      --gray-200: #e5e7eb;
+      --gray-300: #d1d5db;
+      --gray-400: #9ca3af;
+      --gray-500: #6b7280;
+      --gray-600: #4b5563;
+      --gray-700: #374151;
+      --gray-800: #1f2937;
+      --gray-900: #111827;
+      --white: #ffffff;
+      --radius: 16px;
+      --radius-sm: 8px;
+      --shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+      --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      background: linear-gradient(135deg, var(--gray-50) 0%, var(--gray-100) 100%);
+      color: var(--gray-900);
+      line-height: 1.6;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .login-container { 
+      max-width: 400px; 
+      width: 100%;
+    }
+
+    .login-card {
+      background: var(--white);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 40px;
+      border: 1px solid var(--gray-200);
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+
+    .logo {
+      width: 64px;
+      height: 64px;
+      background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+      border-radius: var(--radius);
+      margin: 0 auto 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: var(--shadow);
+    }
+
+    .logo svg {
+      width: 32px;
+      height: 32px;
+      color: var(--white);
+    }
+
+    h1 {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--gray-900);
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      color: var(--gray-500);
+      font-size: 14px;
+      font-weight: 400;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 500;
+      color: var(--gray-700);
+      font-size: 14px;
+    }
+
+    .input-group {
+      position: relative;
+    }
+
+    input[type="text"], input[type="password"] {
+      width: 100%;
+      padding: 12px 16px;
+      border: 2px solid var(--gray-200);
+      border-radius: var(--radius-sm);
+      font-size: 16px;
+      transition: var(--transition);
+      background: var(--white);
+      color: var(--gray-900);
+    }
+
+    input[type="text"]:focus, input[type="password"]:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 24px;
+      border: none;
+      border-radius: var(--radius-sm);
+      font-size: 16px;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      transition: var(--transition);
+      width: 100%;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+      color: var(--white);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow);
+    }
+
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .status-message {
+      padding: 16px;
+      border-radius: var(--radius-sm);
+      margin-bottom: 24px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      display: none;
+    }
+
+    .status-success {
+      background: #f0fff4;
+      color: var(--success);
+      border: 2px solid #9ae6b4;
+    }
+
+    .status-error {
+      background: #fed7d7;
+      color: var(--danger);
+      border: 2px solid #feb2b2;
+    }
+
+    .status-info {
+      background: #ebf8ff;
+      color: #2b6cb0;
+      border: 2px solid #90cdf4;
+    }
+
+    .loading {
+      display: none;
+      text-align: center;
+      padding: 20px;
+    }
+
+    .spinner {
+      width: 20px;
+      height: 20px;
+      border: 2px solid var(--gray-200);
+      border-top: 2px solid var(--primary);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 12px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .footer {
+      text-align: center;
+      margin-top: 24px;
+      padding-top: 24px;
+      border-top: 1px solid var(--gray-200);
+    }
+
+    .footer-link {
+      color: var(--gray-500);
+      text-decoration: none;
+      font-size: 14px;
+      transition: var(--transition);
+    }
+
+    .footer-link:hover {
+      color: var(--primary);
+    }
+
+    @media (max-width: 480px) {
+      body {
+        padding: 16px;
+      }
+      
+      .login-card {
+        padding: 32px 24px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="login-container">
+    <div class="login-card">
+      <!-- 页面头部 -->
+      <div class="header">
+        <div class="logo">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
+          </svg>
+        </div>
+        <h1>设备登录</h1>
+        <p class="subtitle">请输入您的登录凭证</p>
+      </div>
+
+      <!-- 状态消息 -->
+      <div id="status" class="status-message">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+        </svg>
+        <span id="statusText"></span>
+      </div>
+
+      <!-- 加载动画 -->
+      <div id="loading" class="loading">
+        <div class="spinner"></div>
+        <p>正在登录...</p>
+      </div>
+
+      <!-- 登录表单 -->
+      <form id="loginForm">
+        <div class="form-group">
+          <label for="username">用户名</label>
+          <div class="input-group">
+            <input type="text" id="username" name="username" placeholder="请输入用户名" required>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="password">密码</label>
+          <div class="input-group">
+            <input type="password" id="password" name="password" placeholder="请输入密码" required>
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary" id="loginBtn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
+            <polyline points="10,17 15,12 10,7"></polyline>
+            <line x1="15" y1="12" x2="3" y2="12"></line>
+          </svg>
+          登录
+        </button>
+      </form>
+
+      <!-- 页脚 -->
+      <div class="footer" style="display: none;">
+        <a href="/setup" class="footer-link">WiFi配网</a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 页面加载完成后初始化
+    document.addEventListener('DOMContentLoaded', function() {
+      console.log('登录页面加载完成');
+
+      // 检查是否已经登录
+      checkExistingAuth();
+
+      // 设置事件监听器
+      setupEventListeners();
+    });
+
+    // 设置事件监听器
+    function setupEventListeners() {
+      // 登录表单提交
+      document.getElementById('loginForm').addEventListener('submit', handleLogin);
+
+      // 回车键登录
+      document.addEventListener('keydown', function(event) {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          handleLogin(event);
+        }
+      });
+    }
+
+    // 检查现有认证状态
+    function checkExistingAuth() {
+      // 检查是否有有效的session token
+      const cookies = document.cookie.split(';');
+      for (let cookie of cookies) {
+        const [name, value] = cookie.trim().split('=');
+        if (name === 'session_token' && value) {
+          // 验证token是否有效
+          fetch('/api/status', {
+            headers: {
+              'Authorization': `Bearer ${value}`
+            }
+          })
+          .then(response => {
+            if (response.ok) {
+              // Token有效，根据访问方式重定向
+              if (window.location.hostname === '192.168.4.1') {
+                // AP访问，重定向到配网页面
+                window.location.href = '/setup';
+              } else {
+                // STA访问，重定向到控制页面
+                window.location.href = '/';
+              }
+            }
+          })
+          .catch(error => {
+            console.log('Token验证失败:', error);
+          });
+          break;
+        }
+      }
+    }
+
+    // 处理登录表单提交
+    async function handleLogin(event) {
+      event.preventDefault();
+
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+      const loginBtn = document.getElementById('loginBtn');
+      const loading = document.getElementById('loading');
+
+      if (!username || !password) {
+        showStatus('请输入用户名和密码', 'error');
+        return;
+      }
+
+      // 显示加载状态
+      loginBtn.disabled = true;
+      loading.style.display = 'block';
+      hideStatus();
+
+      try {
+        const response = await fetch('/api/auth', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ username, password })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          showStatus('登录成功！正在跳转...', 'success');
+
+          // 保存session token到localStorage作为备份
+          if (data.session_token) {
+            localStorage.setItem('session_token', data.session_token);
+          }
+
+          // 延迟跳转，让用户看到成功消息
+          setTimeout(() => {
+            // 检查是否通过AP访问（192.168.4.1）
+            if (window.location.hostname === '192.168.4.1') {
+              // AP访问，跳转到配网页面
+              window.location.href = '/setup';
+            } else {
+              // STA访问，跳转到控制页面
+              window.location.href = '/';
+            }
+          }, 1000);
+        } else {
+          showStatus(data.message || '登录失败，请检查用户名和密码', 'error');
+        }
+      } catch (error) {
+        console.error('登录请求失败:', error);
+        showStatus('网络连接错误，请重试', 'error');
+      } finally {
+        // 恢复按钮状态
+        loginBtn.disabled = false;
+        loading.style.display = 'none';
+      }
+    }
+
+    // 显示状态消息
+    function showStatus(message, type = 'info') {
+      const status = document.getElementById('status');
+      const statusText = document.getElementById('statusText');
+
+      statusText.textContent = message;
+      status.className = `status-message status-${type}`;
+      status.style.display = 'flex';
+
+      // 错误消息3秒后自动隐藏
+      if (type === 'error') {
+        setTimeout(() => {
+          hideStatus();
+        }, 3000);
+      }
+    }
+
+    // 隐藏状态消息
+    function hideStatus() {
+      const status = document.getElementById('status');
+      status.style.display = 'none';
+    }
+
+    // 页面可见性变化处理
+    document.addEventListener('visibilitychange', function() {
+      if (document.visibilityState === 'visible') {
+        console.log('登录页面变为可见');
+      }
+    });
+  </script>
+</body>
+</html>
