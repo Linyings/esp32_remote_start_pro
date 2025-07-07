@@ -432,84 +432,54 @@ static esp_err_t root_get_handler(httpd_req_t *req)
     // 获取当前WiFi模式
     wifi_working_mode_t mode = wifi_manager_get_mode();
 
-    // 检查请求的主机名和客户端IP，确保准确识别AP访问
+    // 完整的AP访问检测逻辑
     size_t host_len = httpd_req_get_hdr_value_len(req, "Host");
     bool is_ap_access = false;
 
-    // 方法1：检查Host头
     if (host_len > 0) {
         char *host_buf = malloc(host_len + 1);
         if (host_buf) {
             if (httpd_req_get_hdr_value_str(req, "Host", host_buf, host_len + 1) == ESP_OK) {
                 ESP_LOGI(TAG, "请求的Host: %s", host_buf);
-                // 检查是否是AP IP地址 (192.168.4.1)
+
+                // 方法1：检查是否是AP IP地址 (192.168.4.1 或 192.168.4.1:端口)
                 if (strncmp(host_buf, "192.168.4.1", 11) == 0) {
+                    // 检查后面是否是结束符或冒号（端口号）
+                    if (host_buf[11] == '\0' || host_buf[11] == ':') {
+                        is_ap_access = true;
+                        ESP_LOGI(TAG, "通过AP IP检测到热点访问: %s", host_buf);
+                    }
+                }
+                // 方法2：检查是否是AP网段 (192.168.4.x)
+                else if (strncmp(host_buf, "192.168.4.", 10) == 0) {
                     is_ap_access = true;
-                    ESP_LOGI(TAG, "通过Host头检测到AP访问");
+                    ESP_LOGI(TAG, "通过AP网段检测到热点访问: %s", host_buf);
+                }
+                // 方法3：检查是否是Captive Portal检测域名
+                else if (strstr(host_buf, "miui.com") != NULL ||
+                         strstr(host_buf, "apple.com") != NULL ||
+                         strstr(host_buf, "google.com") != NULL ||
+                         strstr(host_buf, "microsoft.com") != NULL ||
+                         strstr(host_buf, "connectivitycheck") != NULL ||
+                         strstr(host_buf, "captive.") != NULL) {
+                    is_ap_access = true;
+                    ESP_LOGI(TAG, "通过Captive Portal域名检测到热点访问: %s", host_buf);
                 }
             }
             free(host_buf);
         }
     }
 
-    // 方法2：检查是否有AP接口活跃并分析Host头（更可靠的方法）
+    // 方法4：如果无法从Host头判断，检查WiFi模式作为兜底
     if (!is_ap_access) {
-        // 检查AP接口是否启用
         wifi_mode_t wifi_mode;
         if (esp_wifi_get_mode(&wifi_mode) == ESP_OK) {
-            if (wifi_mode == WIFI_MODE_AP || wifi_mode == WIFI_MODE_APSTA) {
-                ESP_LOGI(TAG, "AP接口已启用，WiFi模式: %d", wifi_mode);
-
-                // 分析Host头来判断是否为AP访问
-                if (host_len > 0) {
-                    char *host_buf = malloc(host_len + 1);
-                    if (host_buf) {
-                        if (httpd_req_get_hdr_value_str(req, "Host", host_buf, host_len + 1) == ESP_OK) {
-                            ESP_LOGI(TAG, "分析Host头: %s", host_buf);
-
-                            // 明确检查是否为AP网段 (192.168.4.x)
-                            if (strncmp(host_buf, "192.168.4.", 10) == 0) {
-                                is_ap_access = true;
-                                ESP_LOGI(TAG, "通过Host头确认AP访问: %s", host_buf);
-                            }
-                            // 如果Host头包含端口号，也要检查
-                            else if (strncmp(host_buf, "192.168.4.1:", 12) == 0) {
-                                is_ap_access = true;
-                                ESP_LOGI(TAG, "通过Host头(含端口)确认AP访问: %s", host_buf);
-                            }
-                            // 在APSTA模式下，如果Host不是明确的STA IP，可能是AP访问
-                            else if (wifi_mode == WIFI_MODE_APSTA) {
-                                // 获取STA的IP地址进行比较
-                                esp_netif_ip_info_t sta_ip_info;
-                                esp_netif_t *sta_netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
-                                if (sta_netif && esp_netif_get_ip_info(sta_netif, &sta_ip_info) == ESP_OK) {
-                                    char sta_ip_str[16];
-                                    sprintf(sta_ip_str, IPSTR, IP2STR(&sta_ip_info.ip));
-                                    ESP_LOGI(TAG, "STA IP: %s", sta_ip_str);
-
-                                    // 如果Host不是STA的IP，则可能是AP访问
-                                    if (strncmp(host_buf, sta_ip_str, strlen(sta_ip_str)) != 0) {
-                                        is_ap_access = true;
-                                        ESP_LOGI(TAG, "APSTA模式下，Host不是STA IP，判断为AP访问: %s", host_buf);
-                                    }
-                                } else {
-                                    // 无法获取STA IP，保守判断为AP访问
-                                    is_ap_access = true;
-                                    ESP_LOGI(TAG, "APSTA模式下，无法获取STA IP，保守判断为AP访问: %s", host_buf);
-                                }
-                            }
-                        }
-                        free(host_buf);
-                    }
-                }
+            if (wifi_mode == WIFI_MODE_AP) {
+                // 纯AP模式，肯定是AP访问
+                is_ap_access = true;
+                ESP_LOGI(TAG, "纯AP模式，确认为热点访问");
             }
         }
-    }
-
-    // 方法3：如果是纯AP模式，肯定是AP访问
-    if (!is_ap_access && mode == WIFI_MANAGER_MODE_AP) {
-        is_ap_access = true;
-        ESP_LOGI(TAG, "纯AP模式，确认为AP访问");
     }
 
 
@@ -523,19 +493,38 @@ static esp_err_t root_get_handler(httpd_req_t *req)
     }
 
     // 详细的访问状态日志
-    wifi_mode_t current_wifi_mode;
-    esp_wifi_get_mode(&current_wifi_mode);
-    ESP_LOGI(TAG, "访问状态总结 - AP访问: %s, WiFi管理器模式: %d, 实际WiFi模式: %d, STA连接: %s",
-             is_ap_access ? "是" : "否", mode, current_wifi_mode, sta_connected ? "是" : "否");
+    ESP_LOGI(TAG, "访问状态总结 - 热点访问: %s, STA连接: %s",
+             is_ap_access ? "是(ESP32开机助手)" : "否(IP地址)", sta_connected ? "是" : "否");
 
     if (is_ap_access) {
-        // 通过AP访问，无论设备是否连接WiFi都强制要求登录认证
-        ESP_LOGI(TAG, "检测到AP访问，强制要求登录认证 (STA连接状态: %s)",
-                 sta_connected ? "已连接" : "未连接");
+        // 通过AP访问 (ESP32开机助手热点)，强制登录后进入配网页面
+        ESP_LOGI(TAG, "ESP32开机助手热点访问，强制要求登录认证");
 
         // 检查是否已认证
         if (!check_authentication(req)) {
-            ESP_LOGI(TAG, "AP访问未认证，重定向到登录页面");
+            ESP_LOGI(TAG, "热点访问未认证，重定向到登录页面");
+            httpd_resp_set_status(req, "302 Found");
+            httpd_resp_set_hdr(req, "Location", "http://192.168.4.1/login");
+            httpd_resp_set_hdr(req, "Cache-Control", "no-cache, no-store, must-revalidate");
+            httpd_resp_send(req, NULL, 0);
+            return ESP_OK;
+        }
+
+        // 热点访问已认证，重定向到配网页面
+        ESP_LOGI(TAG, "热点访问已认证，重定向到配网页面xxxxxxxxxxx");
+        httpd_resp_set_status(req, "302 Found");
+        httpd_resp_set_hdr(req, "Location", "http://192.168.4.1/setup");
+        httpd_resp_set_hdr(req, "Cache-Control", "no-cache, no-store, must-revalidate");
+        httpd_resp_send(req, NULL, 0);
+        return ESP_OK;
+
+    } else {
+        // 通过IP地址访问，需要先登录再进入控制页面
+        ESP_LOGI(TAG, "IP地址访问，检查认证状态");
+
+        // 检查是否已认证
+        if (!check_authentication(req)) {
+            ESP_LOGI(TAG, "IP访问未认证，重定向到登录页面");
             httpd_resp_set_status(req, "302 Found");
             httpd_resp_set_hdr(req, "Location", "/login");
             httpd_resp_set_hdr(req, "Cache-Control", "no-cache, no-store, must-revalidate");
@@ -543,43 +532,10 @@ static esp_err_t root_get_handler(httpd_req_t *req)
             return ESP_OK;
         }
 
-        // AP访问已认证，重定向到配网页面
-        ESP_LOGI(TAG, "AP访问已认证，重定向到配网页面 (STA连接状态: %s)",
-                 sta_connected ? "已连接" : "未连接");
-        httpd_resp_set_status(req, "302 Found");
-        httpd_resp_set_hdr(req, "Location", "/setup");
-        httpd_resp_set_hdr(req, "Cache-Control", "no-cache, no-store, must-revalidate");
-        httpd_resp_send(req, NULL, 0);
-        return ESP_OK;
+        // IP访问已认证，显示控制页面
+        ESP_LOGI(TAG, "IP访问已认证，显示控制页面");
+        return send_file(req, "/web/index.html");
     }
-
-    // 如果处于纯AP模式或STA未连接，重定向到配网页面
-    if (mode == WIFI_MANAGER_MODE_AP || !sta_connected) {
-        ESP_LOGI(TAG, "需要配网，重定向到配网页面 (模式: %d, STA连接: %s)",
-                 mode, sta_connected ? "是" : "否");
-        httpd_resp_set_status(req, "302 Found");
-        httpd_resp_set_hdr(req, "Location", "/setup");
-        httpd_resp_set_hdr(req, "Cache-Control", "no-cache, no-store, must-revalidate");
-        httpd_resp_send(req, NULL, 0);
-        return ESP_OK;
-    }
-
-    // 通过STA模式（家庭WiFi）访问，需要先检查认证
-    ESP_LOGI(TAG, "STA模式访问，检查认证状态");
-
-    // 检查是否已认证
-    if (!check_authentication(req)) {
-        ESP_LOGI(TAG, "STA访问未认证，重定向到登录页面");
-        httpd_resp_set_status(req, "302 Found");
-        httpd_resp_set_hdr(req, "Location", "/login");
-        httpd_resp_set_hdr(req, "Cache-Control", "no-cache, no-store, must-revalidate");
-        httpd_resp_send(req, NULL, 0);
-        return ESP_OK;
-    }
-
-    // STA访问已认证，显示控制页面
-    ESP_LOGI(TAG, "STA访问已认证，显示控制页面");
-    return send_file(req, "/web/index.html");
 }
 
 // 设置页面处理函数
@@ -587,68 +543,57 @@ static esp_err_t setup_get_handler(httpd_req_t *req)
 {
     ESP_LOGI(TAG, "收到配网页面请求");
 
-    // 检查是否通过AP访问（使用与根路径相同的检测逻辑）
+    // 检查是否通过AP访问 (ESP32开机助手热点) - 使用与根路径相同的检测逻辑
     size_t host_len = httpd_req_get_hdr_value_len(req, "Host");
     bool is_ap_access = false;
 
-    // 方法1：检查Host头
     if (host_len > 0) {
         char *host_buf = malloc(host_len + 1);
         if (host_buf) {
             if (httpd_req_get_hdr_value_str(req, "Host", host_buf, host_len + 1) == ESP_OK) {
                 ESP_LOGI(TAG, "配网页面请求的Host: %s", host_buf);
-                // 检查是否是AP IP地址 (192.168.4.x)
-                if (strncmp(host_buf, "192.168.4.", 10) == 0) {
+
+                // 方法1：检查是否是AP IP地址 (192.168.4.1 或 192.168.4.1:端口)
+                if (strncmp(host_buf, "192.168.4.1", 11) == 0) {
+                    if (host_buf[11] == '\0' || host_buf[11] == ':') {
+                        is_ap_access = true;
+                        ESP_LOGI(TAG, "配网页面通过AP IP检测到热点访问: %s", host_buf);
+                    }
+                }
+                // 方法2：检查是否是AP网段 (192.168.4.x)
+                else if (strncmp(host_buf, "192.168.4.", 10) == 0) {
                     is_ap_access = true;
-                    ESP_LOGI(TAG, "配网页面通过Host头检测到AP访问");
+                    ESP_LOGI(TAG, "配网页面通过AP网段检测到热点访问: %s", host_buf);
+                }
+                // 方法3：检查是否是Captive Portal检测域名
+                else if (strstr(host_buf, "miui.com") != NULL ||
+                         strstr(host_buf, "apple.com") != NULL ||
+                         strstr(host_buf, "google.com") != NULL ||
+                         strstr(host_buf, "microsoft.com") != NULL ||
+                         strstr(host_buf, "connectivitycheck") != NULL ||
+                         strstr(host_buf, "captive.") != NULL) {
+                    is_ap_access = true;
+                    ESP_LOGI(TAG, "配网页面通过Captive Portal域名检测到热点访问: %s", host_buf);
                 }
             }
             free(host_buf);
         }
     }
 
-    // 方法2：在APSTA模式下进一步检查
-    if (!is_ap_access) {
-        wifi_mode_t wifi_mode;
-        if (esp_wifi_get_mode(&wifi_mode) == ESP_OK && wifi_mode == WIFI_MODE_APSTA) {
-            if (host_len > 0) {
-                char *host_buf = malloc(host_len + 1);
-                if (host_buf) {
-                    if (httpd_req_get_hdr_value_str(req, "Host", host_buf, host_len + 1) == ESP_OK) {
-                        // 获取STA的IP地址进行比较
-                        esp_netif_ip_info_t sta_ip_info;
-                        esp_netif_t *sta_netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
-                        if (sta_netif && esp_netif_get_ip_info(sta_netif, &sta_ip_info) == ESP_OK) {
-                            char sta_ip_str[16];
-                            sprintf(sta_ip_str, IPSTR, IP2STR(&sta_ip_info.ip));
-
-                            // 如果Host不是STA的IP，则可能是AP访问
-                            if (strncmp(host_buf, sta_ip_str, strlen(sta_ip_str)) != 0) {
-                                is_ap_access = true;
-                                ESP_LOGI(TAG, "配网页面APSTA模式下，Host不是STA IP，判断为AP访问: %s", host_buf);
-                            }
-                        }
-                    }
-                    free(host_buf);
-                }
-            }
-        }
-    }
-
-    // 如果是AP访问，需要检查认证
+    // 如果是热点访问，需要检查认证
     if (is_ap_access) {
-        ESP_LOGI(TAG, "AP访问配网页面，检查认证状态");
+        ESP_LOGI(TAG, "热点访问配网页面，检查认证状态");
         if (!check_authentication(req)) {
-            ESP_LOGI(TAG, "AP访问配网页面未认证，重定向到登录页面");
+            ESP_LOGI(TAG, "热点访问配网页面未认证，重定向到登录页面");
             httpd_resp_set_status(req, "302 Found");
-            httpd_resp_set_hdr(req, "Location", "/login");
+            httpd_resp_set_hdr(req, "Location", "http://192.168.4.1/login");
             httpd_resp_set_hdr(req, "Cache-Control", "no-cache, no-store, must-revalidate");
             httpd_resp_send(req, NULL, 0);
             return ESP_OK;
         }
-        ESP_LOGI(TAG, "AP访问配网页面已认证，显示配网页面");
+        ESP_LOGI(TAG, "热点访问配网页面已认证，显示配网页面");
     } else {
-        ESP_LOGI(TAG, "STA访问配网页面，直接显示");
+        ESP_LOGI(TAG, "IP访问配网页面，直接显示");
     }
 
     // 设置响应头，防止缓存
@@ -1326,76 +1271,46 @@ static esp_err_t captive_portal_handler(httpd_req_t *req)
         ESP_LOGI(TAG, "STA已连接到: %s", ap_info.ssid);
     }
 
-    if (mode == WIFI_MANAGER_MODE_AP || !sta_connected) {
-        // AP模式或STA未连接 - 需要触发Captive Portal
+    // 修复逻辑：无论STA是否连接，通过AP访问都应该强制登录
+    // 所有Captive Portal检测都重定向到登录页面，而不是配网页面
 
-        if (strcmp(req->uri, "/generate_204") == 0) {
-            // Android/Chrome OS检测 - 返回非204状态码触发Captive Portal
-            ESP_LOGI(TAG, "Android/Chrome OS检测，重定向到配网页面");
-            httpd_resp_set_status(req, "302 Found");
-            httpd_resp_set_hdr(req, "Location", "http://192.168.4.1/setup");
-            httpd_resp_set_hdr(req, "Cache-Control", "no-cache, no-store, must-revalidate");
-            httpd_resp_send(req, NULL, 0);
-            return ESP_OK;
-        }
-        else if (strcmp(req->uri, "/hotspot-detect.html") == 0) {
-            // iOS/macOS检测 - 返回非Success内容触发Captive Portal
-            ESP_LOGI(TAG, "iOS/macOS检测，重定向到配网页面");
-            httpd_resp_set_status(req, "302 Found");
-            httpd_resp_set_hdr(req, "Location", "http://192.168.4.1/setup");
-            httpd_resp_set_hdr(req, "Cache-Control", "no-cache, no-store, must-revalidate");
-            httpd_resp_send(req, NULL, 0);
-            return ESP_OK;
-        }
-        else if (strcmp(req->uri, "/ncsi.txt") == 0 || strcmp(req->uri, "/connecttest.txt") == 0) {
-            // Windows检测 - 返回非标准内容触发Captive Portal
-            ESP_LOGI(TAG, "Windows检测，重定向到配网页面");
-            httpd_resp_set_status(req, "302 Found");
-            httpd_resp_set_hdr(req, "Location", "http://192.168.4.1/setup");
-            httpd_resp_set_hdr(req, "Cache-Control", "no-cache, no-store, must-revalidate");
-            httpd_resp_send(req, NULL, 0);
-            return ESP_OK;
-        }
-        else {
-            // 其他请求，重定向到配网页面
-            ESP_LOGI(TAG, "其他Captive Portal请求，重定向到配网页面");
-            httpd_resp_set_status(req, "302 Found");
-            httpd_resp_set_hdr(req, "Location", "http://192.168.4.1/setup");
-            httpd_resp_set_hdr(req, "Cache-Control", "no-cache, no-store, must-revalidate");
-            httpd_resp_send(req, NULL, 0);
-            return ESP_OK;
-        }
+    ESP_LOGI(TAG, "Captive Portal检测，重定向到登录页面 (STA连接状态: %s)",
+             sta_connected ? "已连接" : "未连接");
+
+    if (strcmp(req->uri, "/generate_204") == 0) {
+        // Android/Chrome OS检测 - 重定向到登录页面
+        ESP_LOGI(TAG, "Android/Chrome OS检测，重定向到登录页面");
+        httpd_resp_set_status(req, "302 Found");
+        httpd_resp_set_hdr(req, "Location", "http://192.168.4.1/login");
+        httpd_resp_set_hdr(req, "Cache-Control", "no-cache, no-store, must-revalidate");
+        httpd_resp_send(req, NULL, 0);
+        return ESP_OK;
+    }
+    else if (strcmp(req->uri, "/hotspot-detect.html") == 0) {
+        // iOS/macOS检测 - 重定向到登录页面
+        ESP_LOGI(TAG, "iOS/macOS检测，重定向到登录页面");
+        httpd_resp_set_status(req, "302 Found");
+        httpd_resp_set_hdr(req, "Location", "http://192.168.4.1/login");
+        httpd_resp_set_hdr(req, "Cache-Control", "no-cache, no-store, must-revalidate");
+        httpd_resp_send(req, NULL, 0);
+        return ESP_OK;
+    }
+    else if (strcmp(req->uri, "/ncsi.txt") == 0 || strcmp(req->uri, "/connecttest.txt") == 0) {
+        // Windows检测 - 重定向到登录页面
+        ESP_LOGI(TAG, "Windows检测，重定向到登录页面");
+        httpd_resp_set_status(req, "302 Found");
+        httpd_resp_set_hdr(req, "Location", "http://192.168.4.1/login");
+        httpd_resp_set_hdr(req, "Cache-Control", "no-cache, no-store, must-revalidate");
+        httpd_resp_send(req, NULL, 0);
+        return ESP_OK;
     }
     else {
-        // STA已连接模式下，返回正常的连接检测响应，表示网络连接正常
-        ESP_LOGI(TAG, "STA已连接，返回网络连接正常响应");
-
-        if (strcmp(req->uri, "/generate_204") == 0) {
-            // Android/Chrome OS - 返回204表示网络正常
-            httpd_resp_set_status(req, "204 No Content");
-            httpd_resp_send(req, NULL, 0);
-        }
-        else if (strcmp(req->uri, "/hotspot-detect.html") == 0) {
-            // iOS/macOS - 返回Success页面表示网络正常
-            httpd_resp_set_status(req, "200 OK");
-            httpd_resp_set_hdr(req, "Content-Type", "text/html");
-            const char* success_response =
-                "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>";
-            httpd_resp_send(req, success_response, strlen(success_response));
-        }
-        else if (strcmp(req->uri, "/ncsi.txt") == 0 || strcmp(req->uri, "/connecttest.txt") == 0) {
-            // Windows - 返回标准NCSI响应
-            httpd_resp_set_status(req, "200 OK");
-            httpd_resp_set_hdr(req, "Content-Type", "text/plain");
-            const char* windows_response = "Microsoft NCSI";
-            httpd_resp_send(req, windows_response, strlen(windows_response));
-        }
-        else {
-            // 其他检测请求
-            httpd_resp_set_status(req, "204 No Content");
-            httpd_resp_send(req, NULL, 0);
-        }
-
+        // 其他Captive Portal请求 - 重定向到登录页面
+        ESP_LOGI(TAG, "其他Captive Portal请求: %s，重定向到登录页面", req->uri);
+        httpd_resp_set_status(req, "302 Found");
+        httpd_resp_set_hdr(req, "Location", "http://192.168.4.1/login");
+        httpd_resp_set_hdr(req, "Cache-Control", "no-cache, no-store, must-revalidate");
+        httpd_resp_send(req, NULL, 0);
         return ESP_OK;
     }
 }
@@ -1738,7 +1653,7 @@ static esp_err_t http_404_error_handler(httpd_req_t *req, httpd_err_code_t err)
 
         // 重定向到配网页面
         httpd_resp_set_status(req, "302 Found");
-        httpd_resp_set_hdr(req, "Location", "/setup");
+        httpd_resp_set_hdr(req, "Location", "http://192.168.4.1/setup");
         httpd_resp_send(req, NULL, 0);
         return ESP_OK;
     }
